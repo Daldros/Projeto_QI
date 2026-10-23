@@ -42,6 +42,7 @@ from .cadastro import Cadastro, Fundo
 from .cotas import SEM_PRAZO, ler_prazo
 from .cvm import formatar_cnpj, so_digitos
 from .prazos import Prazo, TabelaPrazos
+from .tabelas import CARTEIRA
 
 log = logging.getLogger(__name__)
 
@@ -79,15 +80,15 @@ SQL_CADASTRO = (
     "FROM dbo.HOD_TB_CADASTRO_FUNDOS WHERE Situacao = ?"
 )
 SQL_FUNDOS_CARTEIRA = (
-    "SELECT DISTINCT docFundo AS CPF_CNPJ FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA "
-    "WHERE dtReferencia = (SELECT MAX(dtReferencia) FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA)"
+    f"SELECT DISTINCT docFundo AS CPF_CNPJ FROM {CARTEIRA} "
+    f"WHERE dtReferencia = (SELECT MAX(dtReferencia) FROM {CARTEIRA})"
 )
 SQL_DEPARA_BEYOND = "SELECT dsNomeFundoAdm, nmFundoByd, flAtivo FROM dbo.AUD_DIM_DEPARA_FUNDOS"
 SQL_FERIADOS = "SELECT dtFeriado, dsFeriado FROM dbo.AUD_DIM_FERIADOS ORDER BY dtFeriado"
 SQL_COTAS_CARTEIRA = (
     "SELECT DISTINCT cdOp AS Codigo_Op, cdAtivo AS Codigo_Ativo, dsNomeAtivo AS Nome_Ativo"
-    " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA "
-    "WHERE dtReferencia = (SELECT MAX(dtReferencia) FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA) "
+    f" FROM {CARTEIRA} "
+    f"WHERE dtReferencia = (SELECT MAX(dtReferencia) FROM {CARTEIRA}) "
     "  AND dsBaseOrigem IN (" + ",".join("?" * len(BASES_COTA)) + ")"
 )
 # Mesma consulta numa data dada: a posicao mais recente do banco pode estar
@@ -95,7 +96,7 @@ SQL_COTAS_CARTEIRA = (
 # sozinho tinha 453 em 30/09) e a lista de cotas sai pela metade.
 SQL_COTAS_CARTEIRA_DATA = (
     "SELECT DISTINCT cdOp AS Codigo_Op, cdAtivo AS Codigo_Ativo, dsNomeAtivo AS Nome_Ativo"
-    " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA "
+    f" FROM {CARTEIRA} "
     "WHERE dtReferencia = ? AND dsBaseOrigem IN (" + ",".join("?" * len(BASES_COTA)) + ")"
 )
 ARQ_COTAS_DEPARA = DIR_PARAMETROS / "cotas_depara.csv"

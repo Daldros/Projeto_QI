@@ -4,12 +4,18 @@ Código do gestor de risco (pacote `liquidez/` e scripts de passivo), versionado
 e em reorganização. Saídas em **HTML**: painel (`painel.html`) e um relatório
 por fundo (`fundos/<cnpj>.html`).
 
-## Situação (21/10/2026)
+## Situação (23/10/2026)
 
-- Banco: **riscogc** em produção (srvSqlPrd01, `10.101.1.18,1433`), autenticação
-  Windows. Outro ambiente: variáveis `LIQUIDEZ_SERVIDOR` e `LIQUIDEZ_BANCO`.
+- Bancos: **riscogc** e **datalake**, no mesmo servidor de produção (srvSqlPrd01,
+  `10.101.1.18,1433`), autenticação Windows. A conexão é no riscogc e o datalake
+  é lido pelo nome em três partes (`datalake.dbo.TABELA`). Outro ambiente:
+  variáveis `LIQUIDEZ_SERVIDOR`, `LIQUIDEZ_BANCO` e `LIQUIDEZ_BANCO_DATALAKE`.
   O gestor roda no HML (`10.201.1.6`, `riscogchml`). A documentação dele em
   `docs/gestor/` fala desse banco, e isso **não** vale aqui.
+- Desde 23/10/2026, carteira, passivo e série de cotas vêm direto do datalake
+  (`liquidez/tabelas.py`). Estoque, cadastro de fundos e movimentação (`HOD_*`)
+  ainda vêm do riscogc: `python -m liquidez datalake mapear` levanta as
+  equivalentes no datalake. Mapa completo em `docs/mapeamento-banco.md`.
 - Pacote do gestor de 21/10/2026 integrado (`docs/pacote-gestor-2026-10-21.md`):
   - voltaram os módulos `relatorio_excel`, `documentacao` e `cra`;
   - a tabela de prazos, a lista de excluídos e as decisões por fundo entraram
@@ -32,7 +38,7 @@ A planilha `.xlsm` e a pasta `config/` originais não existem mais. O que a
   gestor;
 - `fundos_overrides.csv`, com pz_resg/cc/codinome por fundo.
 
-O resto sai do riscogc:
+O resto sai do banco (cadastro de fundos do riscogc, carteira do datalake):
 
 ```bat
 python -m liquidez importar-pacote --pacote "...\Relatorio Liquidez - pacote" --aplicar  :: so na 1a vez (sem banco)

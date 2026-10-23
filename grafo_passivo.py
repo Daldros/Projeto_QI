@@ -75,12 +75,14 @@ def grupo_da_classe(classe) -> str:
     return "uni"
 
 
-# Passivo direto da MUL_GLD_PASSIVO_CONSOLIDADO (de onde o Datalake monta a HOD_PAS_*);
-# a base de notas deduplicada e o de-para vivem em liquidez/queries.py.
+# Passivo e carteira direto do datalake (MUL_GLD_PASSIVO_CONSOLIDADO, de onde o
+# Datalake monta a HOD_PAS_*, e MUL_GLD_CARTEIRA_UNIFICADA); a base de notas
+# deduplicada e o de-para vivem em liquidez/queries.py.
 from liquidez.queries import (  # noqa: E402
     PASSIVO_DISTRIBUIDORES, PASSIVO_JOIN_DISTRIBUIDOR, PASSIVO_JOIN_FUNDO,
     PASSIVO_NOTAS, SQL_PASSIVO_ULTIMA,
 )
+from liquidez.tabelas import CARTEIRA  # noqa: E402
 
 SQL = f"""
 SELECT f.CNPJFundo AS cnpj_destino, f.nmFundoInterno AS nome_destino,
@@ -113,7 +115,7 @@ BASES_COTA = getattr(gf, "BASES_COTA", None) or (
 SQL_CARTEIRA = f"""
 SELECT docFundo AS cnpj_fundo, dsNomeFundo AS Nome_Do_Fundo, cdAtivo AS Codigo_Ativo,
        dsNomeAtivo AS Nome_Ativo, CAST(vlLiquido AS FLOAT) AS valor
-FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA
+FROM {CARTEIRA}
 WHERE dtReferencia = ? AND dsBaseOrigem IN ({",".join("?" * len(BASES_COTA))})
 """
 

@@ -897,3 +897,66 @@ Qualquer falha, PARE e devolva a saída inteira.
 
 Me devolva a saída literal dos passos 1, 4, 5, 6 e 7.
 ```
+
+## Rodada 24 (23/10/2026) — carteira, passivo e cotas direto do datalake + mapa do que falta
+
+Carteira (`MUL_GLD_CARTEIRA_UNIFICADA`) e passivo (`MUL_GLD_PASSIVO_CONSOLIDADO`)
+passam a ser lidos na origem do banco datalake, não mais nos clones do riscogc.
+A série de cotas do VaR troca a `HOD_TB_COTAS_FUNDOS` pela
+`MUL_GLD_MEC_CONSOLIDADA`, ligada ao fundo pelo `DLK_DEPARA_FUNDOS` (o mesmo
+caminho da carga da HOD desde 10/09). O `passivo comparar` saiu: nada mais lê
+`HOD_PAS_*`. Estoque, cadastro de fundos e movimentação seguem nas `HOD_*`
+porque nenhum repositório tem as colunas das MUL equivalentes; o comando novo
+`datalake mapear` as levanta (só metadados e agregados, sem cotista). O passo 3
+roda ANTES do merge, com a fonte antiga, para comparar a série de cotas. Tudo é
+SELECT.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/optimistic-allen-cpugky e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 5. Rode no cmd, caminho
+absoluto na redireção, um passo de cada vez, sem encadear com &&. Qualquer
+falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. dir .venv\Scripts\python.exe
+   (se não existir: python -m venv .venv e depois
+    .venv\Scripts\pip install -r requirements.txt)
+4. ANTES do merge, a série de cotas pela fonte antiga (HOD):
+   .venv\Scripts\python -m liquidez cotas serie --ate 2026-10-21 --destino C:\Users\mateus.castagnet\mapa_banco\liq24_bi_antes > C:\Users\mateus.castagnet\mapa_banco\liq24_cotas_antes.txt 2>&1
+5. git merge --no-ff origin/claude/optimistic-allen-cpugky   (conflito = PARE)
+6. git log --oneline -4 | findstr /C:"datalake"   (precisa mostrar 1 linha)
+7. .venv\Scripts\python -m pytest -q          (esperado: 101 passed)
+8. git push origin main
+9. .venv\Scripts\python -m liquidez atualidade > C:\Users\mateus.castagnet\mapa_banco\liq24_atualidade.txt 2>&1
+   (as três primeiras linhas são do datalake; se alguma disser "falhou", PARE:
+    o login não está lendo o datalake e o resto depende disso)
+10. .venv\Scripts\python -m liquidez datalake mapear --ate 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq24_mapa_datalake.txt 2>&1
+11. .venv\Scripts\python -m liquidez cotas serie --ate 2026-10-21 --destino C:\Users\mateus.castagnet\mapa_banco\liq24_bi_depois > C:\Users\mateus.castagnet\mapa_banco\liq24_cotas_depois.txt 2>&1
+12. dir /b config\fundos\*.json | find /c ".json"
+    (se der 0: .venv\Scripts\python -m liquidez configurar --aplicar > C:\Users\mateus.castagnet\mapa_banco\liq24_configurar.txt 2>&1
+     -- grava só a pasta config\ local -- e siga)
+13. .venv\Scripts\python -m liquidez extrair --data 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq24_extrair.txt 2>&1
+    (LOTE, sem --fundo: carteira e passivo agora vêm do datalake)
+14. .venv\Scripts\python -m liquidez tratar --fundo "MULTIPLICA FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq24_tratar_lp.txt 2>&1
+    .venv\Scripts\python -m liquidez tratar --fundo "MULTIPLICA LONG TERM FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq24_tratar_lt.txt 2>&1
+    .venv\Scripts\python -m liquidez tratar --fundo "MULTIAGRO FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq24_tratar_ma.txt 2>&1
+15. .venv\Scripts\python -m liquidez fatos gerar > C:\Users\mateus.castagnet\mapa_banco\liq24_fatos.txt 2>&1
+    .venv\Scripts\python -m liquidez painel > C:\Users\mateus.castagnet\mapa_banco\liq24_painel.txt 2>&1
+
+Me devolva a saída literal dos passos 1, 3, 6, 7, 8 e 12 e, SEM resumir:
+- liq24_atualidade, liq24_mapa_datalake, liq24_cotas_antes e
+  liq24_cotas_depois inteiros (só metadados, contagens, fundos e classes; sem
+  cotista);
+- do liq24_extrair, as 40 últimas linhas;
+- dos liq24_tratar_*, da linha "Fundo ....." até a linha "ANBIMA enquadrado
+  ate" (inclusive). NÃO cole a "Tabela vencidos" (CPF e nome de sacado PF);
+- liq24_fatos e liq24_painel inteiros (e liq24_configurar, se o passo 12
+  precisou dele).
+NÃO rode os scripts da raiz (analise_passivo, grafo_passivo, passivo_gestor):
+o HTML deles traz CPF e nome de cotista. NÃO envie .html, .xlsx nem bi\.
+```

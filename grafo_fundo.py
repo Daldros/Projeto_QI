@@ -124,12 +124,14 @@ def _pc(v) -> str:
 
 # --- Consultas --------------------------------------------------------------
 
-# Passivo direto da MUL_GLD_PASSIVO_CONSOLIDADO (de onde o Datalake monta a HOD_PAS_*);
-# a base de notas deduplicada e o de-para vivem em liquidez/queries.py.
+# Passivo e carteira direto do datalake (MUL_GLD_PASSIVO_CONSOLIDADO, de onde o
+# Datalake monta a HOD_PAS_*, e MUL_GLD_CARTEIRA_UNIFICADA); a base de notas
+# deduplicada e o de-para vivem em liquidez/queries.py.
 from liquidez.queries import (  # noqa: E402
     PASSIVO_DISTRIBUIDORES, PASSIVO_JOIN_DISTRIBUIDOR, PASSIVO_JOIN_FUNDO,
     PASSIVO_NOTAS, SQL_PASSIVO_ULTIMA,
 )
+from liquidez.tabelas import CARTEIRA  # noqa: E402
 
 SQL_ENTRA = f"""
 SELECT f.CNPJFundo AS cnpj_fundo, f.nmCotaInterno AS classe,
@@ -166,7 +168,7 @@ BASES_COTA = (
 SQL_SAI = f"""
 SELECT docFundo AS cnpj_fundo, dsNomeFundo AS Nome_Do_Fundo, cdAtivo AS Codigo_Ativo,
        dsNomeAtivo AS Nome_Ativo, CAST(vlLiquido AS FLOAT) AS valor
-FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA
+FROM {CARTEIRA}
 WHERE dtReferencia = ? AND dsBaseOrigem IN ({",".join("?" * len(BASES_COTA))})
 """
 

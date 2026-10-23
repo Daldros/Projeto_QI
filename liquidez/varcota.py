@@ -1,18 +1,20 @@
 """Retorno e VaR parametrico a partir da serie historica de cotas.
 
-A serie vem de `riscogc.dbo.VW_BI_LIQUIDEZ_PL`, que ja entrega cota, PL, CNPJ e
-o nome da classe. Um FIDC nao tem "uma" cota: tem senior, mezanino e
-subordinada, com risco incomparavel entre si -- no MULTIPLICA a subordinada tem
-180x o VaR da senior com um terco do PL. Por isso tudo aqui e POR CLASSE, e nao
-existe funcao que devolva "o VaR do fundo".
+A serie vem da `MUL_GLD_MEC_CONSOLIDADA` do banco datalake (ver `CONSULTA`),
+com CNPJ e nome da classe tirados do cadastro de fundos. Um FIDC nao tem "uma"
+cota: tem senior, mezanino e subordinada, com risco incomparavel entre si -- no
+MULTIPLICA a subordinada tem 180x o VaR da senior com um terco do PL. Por isso
+tudo aqui e POR CLASSE, e nao existe funcao que devolva "o VaR do fundo".
 
 Tres cuidados que a fonte exige:
 
-1. `idFundo` repete a mesma classe em variantes `_GER` e `_IND`. O PL repete,
-   mas a COTA nao -- sao series diferentes. A que vale e a que reproduz o PL,
-   entao o filtro e a identidade `qtCotas x valorCota = valorPL`, nunca o
-   sufixo do nome: ha classe que so existe como `_IND` e ainda assim e a cota
-   patrimonial correta.
+1. `idFundo` repetia a mesma classe em variantes `_GER` e `_IND` na
+   HOD_TB_COTAS_FUNDOS, a fonte ate 23/10/2026. O PL repete, mas a COTA nao --
+   sao series diferentes. A que vale e a que reproduz o PL, entao o filtro e a
+   identidade `qtCotas x valorCota = valorPL`, nunca o sufixo do nome: ha
+   classe que so existe como `_IND` e ainda assim e a cota patrimonial
+   correta. A MEC traz uma serie por carteira, mas o de-para aponta algumas
+   para a variante, e o filtro continua valendo.
 
 2. Ha quebra de cadastro: a senior do ECOAGRO aparece com cota de R$ 63 milhoes
    e 0,000002 cotas, o que produz retorno de +58.297.477% num dia. Retorno com
@@ -31,10 +33,13 @@ ficar bem-comportada. Aquela queda e o risco que interessa.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from .tabelas import DEPARA_FUNDOS, MEC
 
 log = logging.getLogger(__name__)
 
@@ -50,35 +55,58 @@ JANELA_DIAS = 400               # ~13 meses, para o ano completo caber com folga
 LIMIAR_ACCRUAL = 0.5            # autocorrelacao acima disso: cota nao marcada
 BANDA_RAZAO = 1.5               # parametrico/historico fora disso pede atencao
 
-# Le a TABELA-BASE, nao a view VW_BI_LIQUIDEZ_PL.
+# Le a MEC no datalake, desde 23/10/2026.
 #
-# A view devolve uma linha por (CNPJ, classe, data) e, quando ha varias
-# variantes de idFundo, nem sempre escolhe a que reproduz o PL: no ADVENTURE FIM
-# ela entregava a `_IND` (cota 1.758,87) e descartava a base (1.739,72), que era
-# a unica que fecha com o patrimonio. Como o nosso filtro exige
-# `qtCotas x valorCota = valorPL`, o fundo ficava sem serie nenhuma -- e com ele
-# outros 24, somando R$ 5,5 bi de PL. O criterio da view nao da para inspecionar
-# (OBJECT_DEFINITION volta vazio para o nosso login) nem e consistente: no
-# ADVENTURE 2, do mesmo administrador, ela pega a base.
+# Ate entao a serie vinha da HOD_TB_COTAS_FUNDOS (riscogc), e antes de
+# 19/08/2026 da view VW_BI_LIQUIDEZ_PL, que escolhia a variante errada em 25
+# fundos. A HOD juntava 29 origens; as que tinham a cota indexada (`_IND`) e o
+# historico longo pararam em 11/09/2026, e desde 10/09 ela so recebia a MEC,
+# carregada pela rotina do projeto Datalake (usp_Carregar_HOD_TB_COTAS_FUNDOS)
+# pelo mesmo de-para usado aqui:
+#     MEC.idCliente = DLK_DEPARA_FUNDOS.cdCarteira -> cdFundoInterno = idFundo
+# Ler a MEC direto tira essa rotina do caminho. O preco: a MEC comeca em
+# 13/02/2026, cobre ~150 carteiras (Singulare, Amplis, Minicom) e so tem a cota
+# patrimonial -- sem `_IND`, toda serie sai PATRIMONIAL (ver `extrair`).
 #
-# Lendo a base e fazendo o de-para do CNPJ aqui, TODAS as variantes chegam e a
-# escolha passa a ser nossa, pelo teste de identidade. Onde as duas fontes tem a
-# serie, elas concordam -- diferenca mediana da ultima cota igual a zero.
-CONSULTA = """
-SELECT c.Data, c.idFundo, f.nmCotaInterno, f.CNPJFundo AS CNPJ,
-       c.qtCotas, c.valorCota, c.valorPL
-FROM HOD_TB_COTAS_FUNDOS c
-JOIN HOD_TB_CADASTRO_FUNDOS f ON f.idFundoInterno = c.idFundo
-WHERE c.Data BETWEEN ? AND ? AND c.valorCota > 0 AND c.qtCotas > 0
+# As regras da carga da HOD continuam aqui: uma linha por (data, fundo), e na
+# duplicidade vence a de dhAlteracao mais recente; valor com 12+ digitos
+# inteiros fica de fora (na HOD nao cabia em DECIMAL(20,8) e era descartado).
+CONSULTA = f"""
+SELECT x.Data, x.idFundo, x.qtCotas, x.valorCota, x.valorPL
+FROM (
+    SELECT m.dtReferencia AS Data,
+           CONVERT(VARCHAR(255), d.cdFundoInterno) AS idFundo,
+           m.qtCotas, m.vlCota AS valorCota, m.vlPatrimonio AS valorPL,
+           ROW_NUMBER() OVER (PARTITION BY m.dtReferencia, CONVERT(VARCHAR(255), d.cdFundoInterno)
+                              ORDER BY m.dhAlteracao DESC, m.id DESC) AS rn
+    FROM {MEC} AS m
+    JOIN {DEPARA_FUNDOS} AS d ON CONVERT(VARCHAR(50), d.cdCarteira) = m.idCliente
+    WHERE m.dtReferencia BETWEEN ? AND ?
+      AND m.idCliente IS NOT NULL AND d.cdFundoInterno IS NOT NULL
+) AS x
+WHERE x.rn = 1 AND x.valorCota > 0 AND x.qtCotas > 0
+  AND x.valorCota < 1000000000000 AND x.qtCotas < 1000000000000
+  AND ABS(x.valorPL) < 1000000000000
 """
 
-# Quantos idFundo do periodo nao acham cadastro -- viram serie perdida em
-# silencio se ninguem contar.
-CONSULTA_ORFAOS = """
-SELECT COUNT(DISTINCT c.idFundo) AS orfaos
-FROM HOD_TB_COTAS_FUNDOS c
-LEFT JOIN HOD_TB_CADASTRO_FUNDOS f ON f.idFundoInterno = c.idFundo
-WHERE c.Data BETWEEN ? AND ? AND f.idFundoInterno IS NULL
+# Carteira da MEC sem de-para nao entra no join e sumiria calada. Avisar custa
+# uma consulta e evita descobrir a perda so quando um fundo some do painel.
+CONSULTA_SEM_DEPARA = f"""
+SELECT COUNT(DISTINCT m.idCliente) AS sem_depara
+FROM {MEC} AS m
+WHERE m.dtReferencia BETWEEN ? AND ? AND m.idCliente IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM {DEPARA_FUNDOS} AS d
+                  WHERE CONVERT(VARCHAR(50), d.cdCarteira) = m.idCliente
+                    AND d.cdFundoInterno IS NOT NULL)
+"""
+
+# CNPJ e classe de cada idFundo. O cadastro inteiro, nao so o que casa: e nas
+# variantes `_GER`/`_IND` que mora o nome da classe quando a linha base diz
+# "ORIGINAL". Ainda no riscogc: o datalake nao tem cadastro de fundos conhecido.
+CONSULTA_CADASTRO = """
+SELECT idFundoInterno, nmCotaInterno, CNPJFundo
+FROM dbo.HOD_TB_CADASTRO_FUNDOS
+WHERE idFundoInterno IS NOT NULL
 """
 
 # CDI diario, para o excedente do Sharpe. `Valor` e a taxa em % ao ano na base
@@ -173,134 +201,142 @@ def id_base(id_fundo) -> str:
 
 
 def extrair(ate, dias: int = JANELA_DIAS) -> pd.DataFrame:
-    """Le a janela e devolve a cota INDEXADA, com o PL patrimonial ao lado.
+    """Le a janela da MEC e devolve a cota por classe, com o PL ao lado.
 
-    Cada classe existe em duas variantes de idFundo, e elas medem coisas
-    diferentes:
-
-      `_IND`     cota indexada. Nao e reduzida por amortizacao nem por
-                 aplicacao -- so acumula o rendimento. E a serie de retorno.
-      base       cota patrimonial. Reproduz o PL (`qtCotas x cota = PL`) e por
-                 isso CAI quando o fundo amortiza, mesmo sem ninguem perder
-                 nada.
-
-    Ate 19/08/2026 daqui saia a patrimonial, escolhida pelo teste de
-    identidade. Isso media amortizacao como prejuizo: a SENIOR 2 do GO KENERSON
-    aparecia com -62,86% no periodo e vol de 36,3% a.a., quando a indexada do
-    mesmo papel, no mesmo intervalo, rendeu +22,71% (+21,40% a.a.) com vol de
-    0,39% e nenhum dia negativo. O erro nao era pequeno nem raro -- atingia toda
-    senior e mezanino que amortiza.
-
-    Agora a cota vem da `_IND` e o PL da patrimonial, que continua sendo a unica
-    que fecha com o patrimonio. `fonte_cota` registra o que foi usado em cada
-    linha, porque nem todo fundo tem as duas.
+    A MEC so tem a cota PATRIMONIAL, a que reproduz o PL
+    (`qtCotas x cota = PL`) e por isso CAI quando o fundo amortiza, mesmo sem
+    ninguem perder nada. De 19/08 a 23/10/2026 a cota vinha da variante `_IND`
+    da HOD_TB_COTAS_FUNDOS, a indexada, que nao e reduzida por amortizacao nem
+    por aplicacao: a SENIOR 2 do GO KENERSON aparecia com -62,86% no periodo
+    pela patrimonial e +22,71% pela indexada. A `_IND` deixou de ser alimentada
+    em 11/09/2026 e nao existe no datalake, entao a amortizacao volta a
+    aparecer como queda nas senior e mezanino que amortizam. `fonte_cota` diz
+    PATRIMONIAL em toda linha e `retornos_negativos` lista esses dias.
     """
     from .db import consultar
 
     fim = pd.Timestamp(ate).normalize()
     inicio = fim - pd.Timedelta(days=dias)
-    bruto = consultar(CONSULTA, (inicio.date().isoformat(), fim.date().isoformat()))
+    janela = (inicio.date().isoformat(), fim.date().isoformat())
+    bruto = consultar(CONSULTA, janela)
     if bruto.empty:
         log.warning("Serie de cotas vazia entre %s e %s.", inicio.date(), fim.date())
         return pd.DataFrame(columns=["data", "cnpj_fundo", "classe", "id_fundo",
                                      "qt_cotas", "valor_cota", "valor_pl",
                                      "fonte_cota"])
 
+    try:
+        sem_depara = int(consultar(CONSULTA_SEM_DEPARA, janela)["sem_depara"].iloc[0])
+        if sem_depara:
+            log.warning("%d carteira(s) da MEC com cota no periodo nao tem de-para "
+                        "em DLK_DEPARA_FUNDOS; ficam de fora.", sem_depara)
+    except Exception:
+        log.debug("Nao foi possivel contar as carteiras sem de-para.", exc_info=True)
+
     for coluna in ("qtCotas", "valorCota", "valorPL"):
         bruto[coluna] = pd.to_numeric(bruto[coluna], errors="coerce")
     bruto["Data"] = pd.to_datetime(bruto["Data"], errors="coerce")
     bruto = bruto.dropna(subset=["Data", "qtCotas", "valorCota", "valorPL"])
 
-    bruto["cnpj_fundo"] = bruto["CNPJ"].astype(str).str.replace(r"\D", "", regex=True)
-    bruto["classe"] = bruto["nmCotaInterno"].astype(str).str.strip().str.upper()
-    bruto = _resolver_classe(bruto)
+    bruto = _rotular(bruto, consultar(CONSULTA_CADASTRO))
     bruto = bruto.rename(columns={"Data": "data", "idFundo": "id_fundo",
                                   "qtCotas": "qt_cotas", "valorCota": "valor_cota",
                                   "valorPL": "valor_pl"})
     bruto["id_base"] = bruto["id_fundo"].map(id_base)
 
-    # A identidade continua sendo o teste de qual linha e a patrimonial.
+    # A identidade e o teste de que a linha e mesmo a cota patrimonial.
     fecha = ((bruto["qt_cotas"] * bruto["valor_cota"] - bruto["valor_pl"]).abs()
              <= bruto["valor_pl"].abs() * 1e-6 + 0.01)
-    e_ind = bruto["id_fundo"].astype(str).str.upper().str.endswith("_IND")
+    if not fecha.all():
+        log.warning("%d linha(s) de %d idFundo nao fecham qtCotas x cota = PL; "
+                    "ficam de fora.", int((~fecha).sum()),
+                    bruto.loc[~fecha, "id_fundo"].nunique())
 
-    def _unico(d):
-        # Base e _GER, quando ambas passam, sao iguais -- uma basta.
-        return (d.sort_values(CHAVE + ["id_fundo"])
-                 .drop_duplicates(CHAVE))
-
-    pat = _unico(bruto[fecha])
-    ind = _unico(bruto[e_ind])
-
-    # Cota da indexada; PL, quantidade e CLASSE da patrimonial. A classe vem da
-    # patrimonial de proposito: o cadastro rotula a variante `_IND` de alguns
-    # fundos como "... OLD", e herdar esse rotulo partia a serie em duas.
-    campos = ["id_fundo", "classe", "qt_cotas", "valor_cota", "valor_pl"]
-    juntos = ind[CHAVE + campos].merge(
-        pat[CHAVE + campos], on=CHAVE, how="outer", suffixes=("_ind", "_pat"))
-
-    tem_ind = juntos["valor_cota_ind"].notna()
-    juntos["fonte_cota"] = np.where(tem_ind, "IND", "PATRIMONIAL")
-    juntos["valor_cota"] = juntos["valor_cota_ind"].fillna(juntos["valor_cota_pat"])
-    # Sem par patrimonial, o que a indexada traz e o que ha.
-    juntos["qt_cotas"] = juntos["qt_cotas_pat"].fillna(juntos["qt_cotas_ind"])
-    juntos["valor_pl"] = juntos["valor_pl_pat"].fillna(juntos["valor_pl_ind"])
-    juntos["classe"] = juntos["classe_pat"].fillna(juntos["classe_ind"])
-    # O idFundo acompanha de onde a COTA veio, que e o que se audita depois.
-    juntos["id_fundo"] = juntos["id_fundo_ind"].where(
-        tem_ind, juntos["id_fundo_pat"])
-
-    saida = juntos.dropna(subset=["valor_cota", "valor_pl", "classe"])[
+    # Base e _GER, quando ambas passam, sao iguais -- uma basta.
+    saida = (bruto[fecha].sort_values(CHAVE + ["id_fundo"])
+                         .drop_duplicates(CHAVE)
+                         .assign(fonte_cota="PATRIMONIAL"))[
         ["data", "cnpj_fundo", "classe", "id_fundo", "id_base",
          "qt_cotas", "valor_cota", "valor_pl", "fonte_cota"]]
 
     # Dois idFundo distintos podem cair na MESMA classe na mesma data -- e o
     # caso do SERRA FII, com `PLA_...` e `SIN_...` reportando o mesmo fundo em
     # paralelo, valores identicos. Somar as duas dobrava o PL (R$ 71,2 mi onde
-    # o patrimonio e R$ 35,6 mi). Fica uma: a indexada tem preferencia, e o
-    # desempate por idFundo so existe para a escolha nao variar entre rodadas.
+    # o patrimonio e R$ 35,6 mi). Fica uma; o desempate por idFundo so existe
+    # para a escolha nao variar entre rodadas.
     antes_dedup = len(saida)
-    saida = (saida.assign(_p=(saida["fonte_cota"] != "IND").astype(int))
-                  .sort_values(["cnpj_fundo", "classe", "data", "_p", "id_fundo"])
-                  .drop_duplicates(["cnpj_fundo", "classe", "data"])
-                  .drop(columns="_p"))
+    por_serie = saida.groupby(["cnpj_fundo", "classe"]).size()
+    saida = (saida.sort_values(["cnpj_fundo", "classe", "data", "id_fundo"])
+                  .drop_duplicates(["cnpj_fundo", "classe", "data"]))
     if antes_dedup > len(saida):
-        repetidas = (juntos.groupby(["cnpj_fundo", "classe"]).size()
-                     - saida.groupby(["cnpj_fundo", "classe"]).size())
+        repetidas = por_serie - saida.groupby(["cnpj_fundo", "classe"]).size()
         alvo = repetidas[repetidas > 0]
         log.warning("%d linha(s) de classe repetida na mesma data removida(s), "
                     "em %d serie(s) -- mais de um idFundo para a mesma classe: %s.",
                     antes_dedup - len(saida), len(alvo),
                     ", ".join(f"{c}/{k}" for c, k in list(alvo.index)[:5]))
 
-    n_ind = int((saida["fonte_cota"] == "IND").sum())
-    n_pat = len(saida) - n_ind
-    log.info("Serie de cotas: %d linha(s), %d fundo(s), %d classe(s); "
-             "%d da cota indexada (_IND) e %d da patrimonial.",
-             len(saida), saida["cnpj_fundo"].nunique(),
-             saida.groupby(["cnpj_fundo", "classe"]).ngroups, n_ind, n_pat)
-    if n_pat:
-        faltam = (saida[saida["fonte_cota"] == "PATRIMONIAL"]
-                  .groupby(["cnpj_fundo", "classe"]).ngroups)
+    series = saida.groupby(["cnpj_fundo", "classe"]).ngroups
+    log.info("Serie de cotas (MEC): %d linha(s), %d fundo(s), %d classe(s).",
+             len(saida), saida["cnpj_fundo"].nunique(), series)
+    if series:
         log.warning("%d serie(s) sem cota indexada; usam a patrimonial, que a "
-                    "amortizacao reduz -- retorno e vol saem distorcidos nelas.",
-                    faltam)
-
-    # idFundo sem cadastro nao entra no join e sumiria calado. Avisar custa uma
-    # consulta e evita descobrir a perda so quando um fundo some do painel.
-    try:
-        orfaos = int(consultar(
-            CONSULTA_ORFAOS,
-            (inicio.date().isoformat(), fim.date().isoformat())
-        )["orfaos"].iloc[0])
-        if orfaos:
-            log.warning("%d idFundo com cota no periodo nao tem linha em "
-                        "HOD_TB_CADASTRO_FUNDOS; sem CNPJ, ficam de fora.",
-                        orfaos)
-    except Exception:
-        log.debug("Nao foi possivel contar os idFundo orfaos.", exc_info=True)
-
+                    "amortizacao reduz -- retorno e vol saem distorcidos nas que "
+                    "amortizam.", series)
     return saida.reset_index(drop=True)
+
+
+def _classe_da_base(id_fundo, rotulos: dict[str, str]) -> str:
+    """Classe de um idFundo como a serie patrimonial a teria (ver `_rotular`)."""
+    texto = str(id_fundo or "").strip()
+    base = id_base(texto)
+    for candidato in (base, f"{base}_GER", f"{base}_IND", f"{base}_GER_IND"):
+        rotulo = rotulos.get(candidato, "")
+        if rotulo not in ROTULO_SEM_CLASSE:
+            return rotulo
+    return _classe_do_sufixo(base) or rotulos.get(texto) or rotulos.get(base) or "ORIGINAL"
+
+
+def _rotular(bruto: pd.DataFrame, cadastro: pd.DataFrame) -> pd.DataFrame:
+    """CNPJ e classe de cada linha da MEC, pelo idFundo que o de-para deu.
+
+    A classe e a que a serie patrimonial tinha na HOD: a da linha base do
+    cadastro ou, quando ela diz "ORIGINAL" (rotulo de procedencia, nao classe),
+    a da variante `_GER`/`_IND` do mesmo idFundo, que carrega o nome correto;
+    sem nenhuma, a do sufixo do idFundo. Vale tambem quando o de-para aponta
+    para a variante: o cadastro chama a `_IND` de alguns fundos de "... OLD", e
+    herdar esse rotulo marcaria a classe como encerrada. Sobrando alguma sem
+    resolver, ela fica como esta e o log conta -- e melhor uma classe estranha
+    visivel que uma classe inventada.
+
+    idFundo sem linha no cadastro (nem a propria nem a da base) fica sem CNPJ e
+    cai fora; o log conta, para a perda nao passar calada.
+    """
+    cad = cadastro.dropna(subset=["idFundoInterno"]).copy()
+    cad["idFundoInterno"] = cad["idFundoInterno"].astype(str).str.strip()
+    cad["rotulo"] = cad["nmCotaInterno"].fillna("").astype(str).str.strip().str.upper()
+    cad["cnpj"] = cad["CNPJFundo"].fillna("").astype(str).map(lambda c: re.sub(r"\D", "", c))
+    cad = cad.drop_duplicates("idFundoInterno")
+    rotulos = dict(zip(cad["idFundoInterno"], cad["rotulo"]))
+    cnpjs = {i: c for i, c in zip(cad["idFundoInterno"], cad["cnpj"]) if c}
+
+    bruto = bruto.copy()
+    bruto["idFundo"] = bruto["idFundo"].astype(str).str.strip()
+    ids = bruto["idFundo"].unique()
+    cnpj = {i: cnpjs.get(i) or cnpjs.get(id_base(i)) for i in ids}
+    classe = {i: _classe_da_base(i, rotulos) for i in ids}
+    bruto["cnpj_fundo"] = bruto["idFundo"].map(cnpj)
+    bruto["classe"] = bruto["idFundo"].map(classe)
+
+    orfaos = sorted(i for i in ids if not cnpj[i])
+    if orfaos:
+        log.warning("%d idFundo do de-para nao tem linha em HOD_TB_CADASTRO_FUNDOS; "
+                    "sem CNPJ, ficam de fora: %s.", len(orfaos), ", ".join(orfaos[:5]))
+    sem_classe = sorted(i for i in ids if cnpj[i] and classe[i] in ROTULO_SEM_CLASSE)
+    if sem_classe:
+        log.warning("%d idFundo seguem sem classe reconhecivel: %s.",
+                    len(sem_classe), ", ".join(sem_classe[:5]))
+    return bruto[bruto["cnpj_fundo"].notna()]
 
 
 def extrair_cdi(ate, dias: int = JANELA_DIAS) -> pd.DataFrame:
@@ -383,48 +419,6 @@ def cdi_acumulado(cdi: pd.DataFrame, datas) -> list[float | None]:
     if pd.isna(base) or base == 0:
         return [None] * len(datas)
     return [None if pd.isna(v) else float(v / base - 1.0) for v in nos_pontos]
-
-
-def _resolver_classe(df: pd.DataFrame) -> pd.DataFrame:
-    """Troca o rotulo 'ORIGINAL' pela classe de verdade.
-
-    Duas fontes, nesta ordem: a variante `_GER`/`_IND` do mesmo idFundo, que
-    carrega o nome correto; e, se nao houver variante, o sufixo do proprio
-    idFundo. Sobrando alguma sem resolver, ela fica como esta e o log conta --
-    e melhor uma classe estranha visivel que uma classe inventada.
-    """
-    sem_classe = df["classe"].isin(ROTULO_SEM_CLASSE)
-    if not sem_classe.any():
-        return df
-
-    # idFundo -> classe, so das linhas que ja trazem nome utilizavel.
-    conhecidas = (df.loc[~sem_classe]
-                    .drop_duplicates("idFundo")
-                    .set_index("idFundo")["classe"].to_dict())
-
-    def resolver(id_fundo: str) -> str | None:
-        for variante in ("_GER", "_IND", "_GER_IND"):
-            achado = conhecidas.get(f"{id_fundo}{variante}")
-            if achado:
-                return achado
-        return _classe_do_sufixo(id_fundo)
-
-    alvo = df.loc[sem_classe, "idFundo"].astype(str)
-    mapa = {i: resolver(i) for i in alvo.unique()}
-    resolvido = alvo.map(mapa)
-
-    n_resolvidas = int(resolvido.notna().sum())
-    n_perdidas = int(resolvido.isna().sum())
-    df.loc[sem_classe, "classe"] = resolvido.fillna(
-        df.loc[sem_classe, "classe"])
-    if n_resolvidas:
-        log.info("Classe resolvida para %d linha(s) rotuladas como ORIGINAL.",
-                 n_resolvidas)
-    if n_perdidas:
-        log.warning("%d linha(s) seguem sem classe reconhecivel (idFundo: %s).",
-                    n_perdidas,
-                    ", ".join(sorted({i for i, c in mapa.items() if c is None})[:5]))
-    return df
 
 
 # Classes remuneradas por contrato -- CDI + taxa pre. A cota indexada delas so

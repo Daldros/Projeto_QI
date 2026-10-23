@@ -31,6 +31,7 @@ from .cadastro import (
 )
 from .cvm import SITUACAO_CANCELADO, formatar_cnpj, so_digitos
 from .regras_adm import obter as obter_regra
+from .tabelas import CARTEIRA
 
 log = logging.getLogger("liquidez")
 
@@ -888,7 +889,7 @@ def cmd_cronograma_beyond(args) -> int:
         # recente do banco: em 05/10/2026 a carteira de 02/10 estava no riscogc
         # pela metade (0 NC/CCB do MULTIPLICA FIDC) e a captura voltava vazia.
         data = args.data or _data_da_carga_local(Path(args.saida), fundo.cnpj) or db.consultar(
-            "SELECT MAX(dtReferencia) AS d FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA"
+            f"SELECT MAX(dtReferencia) AS d FROM {CARTEIRA}"
             " WHERE docFundo = ?", (fundo.cnpj,)).iloc[0]["d"]
         if data is None or (hasattr(data, "__class__") and str(data) in ("NaT", "None")):
             print(f"AVISO  {fundo.nome_interno}: nenhuma posicao na MUL_GLD_CARTEIRA_UNIFICADA"
@@ -901,7 +902,7 @@ def cmd_cronograma_beyond(args) -> int:
         linhas = db.consultar(
             "SELECT cdOp AS Codigo_Op, dsEmissor AS Emissor, dtAquisicao AS Data_Aquisicao,"
             " vlCustoTotal AS Custo_Total"
-            " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA"
+            f" FROM {CARTEIRA}"
             " WHERE docFundo = ? AND dtReferencia = ? AND vlCustoTotal > 0"
             "   AND (cdAtivo LIKE 'NCPX%' OR cdAtivo LIKE 'CCBPX%')"
             " ORDER BY vlCustoTotal DESC", (fundo.cnpj, str(data)))
@@ -998,7 +999,7 @@ def _diagnosticar_beyond(fundo, data, snapshot) -> None:
         " SUM(CASE WHEN vlCustoTotal IS NULL THEN 1 ELSE 0 END) AS custo_nulo,"
         " SUM(CASE WHEN vlCustoTotal = 0 THEN 1 ELSE 0 END) AS custo_zero,"
         " SUM(CASE WHEN dtAquisicao IS NULL THEN 1 ELSE 0 END) AS aquisicao_nula"
-        " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA WHERE docFundo = ? AND dtReferencia = ?",
+        f" FROM {CARTEIRA} WHERE docFundo = ? AND dtReferencia = ?",
         (fundo.cnpj, str(data)))
     c = cart.iloc[0]
     print(f"     carteira {data}: {int(c['linhas'])} linhas | NCPX/CCBPX {int(c['ncpx'] or 0)}"
@@ -1007,7 +1008,7 @@ def _diagnosticar_beyond(fundo, data, snapshot) -> None:
     exemplos = db.consultar(
         "SELECT TOP (5) cdOp AS Codigo_Op, cdAtivo AS Codigo_Ativo, dtAquisicao AS Data_Aquisicao,"
         " vlCustoTotal AS Custo_Total, vlLiquido AS Valor_Liquido"
-        " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA"
+        f" FROM {CARTEIRA}"
         " WHERE docFundo = ? AND dtReferencia = ? AND cdOp LIKE 'C%'"
         " ORDER BY vlLiquido DESC", (fundo.cnpj, str(data)))
     for _, e in exemplos.iterrows():
@@ -1766,7 +1767,7 @@ def cmd_cotas_sincronizar(args) -> int:
 
 
 def cmd_cotas_serie(args) -> int:
-    """Baixa a serie de cotas do riscogc e grava na camada de fatos."""
+    """Baixa a serie de cotas da MEC (datalake) e grava na camada de fatos."""
     import datetime as _dt
 
     from . import fatos as ft
@@ -2487,25 +2488,13 @@ def cmd_atualidade(args) -> int:
     return 0
 
 
-def cmd_passivo_comparar(args) -> int:
-    """Passivo das duas fontes na mesma data (so SELECT; sem nome nem documento)."""
-    from . import db, queries
-    from .diagnostico import formatar_comparacao_passivo, resumir_passivo
+def cmd_datalake_mapear(args) -> int:
+    """Procura no datalake o que ainda vem do riscogc (so SELECT; sem cotista)."""
+    from .mapa_datalake import mapear
 
-    cadastro = Cadastro(Path(args.diretorio)).carregar()
-    if args.fundo:
-        fundos = [cadastro.obter(args.fundo)]
-        if fundos[0] is None:
-            raise SystemExit(f"Fundo nao encontrado: {args.fundo}")
-    else:
-        fundos = cadastro.filtrar()
-    print(f"Passivo em {args.data}: consolidado (novo) x HOD (antigo), R$ mil")
-    for fundo in fundos:
-        novo = resumir_passivo(db.consultar(*queries.db_passivo(fundo.cnpj, args.data)))
-        antigo = resumir_passivo(db.consultar(*queries.db_passivo_hod(fundo.cnpj, args.data)))
-        brutas = db.consultar(*queries.passivo_notas_brutas(fundo.cnpj, args.data))
-        brutas = brutas.iloc[0].to_dict() if not brutas.empty else {}
-        print(formatar_comparacao_passivo(fundo.nome_interno, fundo.cnpj, novo, antigo, brutas))
+    fichas = Cadastro(Path(args.diretorio)).carregar().filtrar()
+    for linha in mapear(fichas, args.ate):
+        print(linha)
     return 0
 
 
@@ -2983,17 +2972,17 @@ def construir_parser() -> argparse.ArgumentParser:
     # --- carteira ---
     # --- atualidade ---
     p = sub.add_parser("atualidade",
-                       help="ultima data de cada base da liquidez no riscogc (e da origem no datalake); so SELECT")
+                       help="ultima data de cada base que a liquidez le (datalake e riscogc); so SELECT")
     p.set_defaults(func=cmd_atualidade)
 
-    # --- passivo ---
-    p_pas = sub.add_parser("passivo", help="diagnosticos do passivo (cotistas)")
-    spa = p_pas.add_subparsers(dest="subcomando", required=True)
-    p = spa.add_parser("comparar",
-                       help="HOD_PAS (antigo) x MUL_GLD_PASSIVO_CONSOLIDADO (novo) numa data; so agregados, sem cotista")
-    p.add_argument("--data", required=True, help="posicao AAAA-MM-DD")
-    p.add_argument("--fundo", help="CNPJ ou nome interno; sem isso, todos os ativos do cadastro")
-    p.set_defaults(func=cmd_passivo_comparar)
+    # --- datalake ---
+    p_dl = sub.add_parser("datalake", help="diagnosticos do banco datalake (so SELECT)")
+    sdl = p_dl.add_subparsers(dest="subcomando", required=True)
+    p = sdl.add_parser("mapear",
+                       help="procura no datalake as tabelas que ainda vem do riscogc; "
+                            "so metadados e agregados, sem cotista")
+    p.add_argument("--ate", help="fim da janela da serie de cotas, AAAA-MM-DD (padrao: hoje)")
+    p.set_defaults(func=cmd_datalake_mapear)
 
     p_cart = sub.add_parser("carteira", help="diagnosticos sobre a carteira extraida")
     scr = p_cart.add_subparsers(dest="subcomando", required=True)
