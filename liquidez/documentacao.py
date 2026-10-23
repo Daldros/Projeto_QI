@@ -49,7 +49,7 @@ ETAPAS: tuple[Etapa, ...] = (
         funcao="tratamentos.separar_ativos_vencidos",
         resumo="Levanta quais emissores da carteira estão com ativos vencidos. O resultado "
                "alimenta a marcação de cada linha na etapa 3.",
-        entrada="Base <code>carteira</code> (HOD_TB_CARTEIRA_UNIFICADA)",
+        entrada="Base <code>carteira</code> (MUL_GLD_CARTEIRA_UNIFICADA, banco datalake)",
         saida="Lista de emissores — era a coluna A da aba <code>Vencidos</code>",
         regra=[
             "Seleciona as linhas da carteira conforme as condições do administrador, definidas em "

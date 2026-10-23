@@ -88,6 +88,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .tabelas import CARTEIRA
+
 log = logging.getLogger(__name__)
 
 ORIGEM = "beyond"
@@ -453,11 +455,11 @@ def novas_na_carteira(cnpj_fundo: str, data: dt.date | str,
         "SELECT cdOp AS Codigo_Op, cdAtivo AS Codigo_Ativo, dsEmissor AS Emissor,"
         " dtAquisicao AS Data_Aquisicao, dtVencimento AS Data_Vencimento,"
         " vlCustoTotal AS Custo_Total, vlLiquido AS Valor_Liquido"
-        " FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA"
+        f" FROM {CARTEIRA}"
         " WHERE docFundo = ? AND dtReferencia = ? AND vlCustoTotal > 0"
         "   AND (cdAtivo LIKE 'NCPX%' OR cdAtivo LIKE 'CCBPX%')"
         "   AND cdOp NOT IN ("
-        "       SELECT cdOp FROM dbo.MUL_GLD_CARTEIRA_UNIFICADA"
+        f"       SELECT cdOp FROM {CARTEIRA}"
         "       WHERE docFundo = ? AND dtReferencia = ?)"
         " ORDER BY vlCustoTotal DESC"
     )
