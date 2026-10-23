@@ -2498,6 +2498,16 @@ def cmd_datalake_mapear(args) -> int:
     return 0
 
 
+def cmd_datalake_comparar(args) -> int:
+    """Confere as candidatas do datalake contra o que se le hoje (so SELECT; so agregados)."""
+    from .comparar_datalake import comparar
+
+    fichas = Cadastro(Path(args.diretorio)).carregar().filtrar()
+    for linha in comparar(fichas, args.data):
+        print(linha)
+    return 0
+
+
 def cmd_carteira_resumo(args) -> int:
     """Composicao da carteira extraida (base local, sem banco)."""
     from .diagnostico import formatar, resumir_carteira
@@ -2983,6 +2993,11 @@ def construir_parser() -> argparse.ArgumentParser:
                             "so metadados e agregados, sem cotista")
     p.add_argument("--ate", help="fim da janela da serie de cotas, AAAA-MM-DD (padrao: hoje)")
     p.set_defaults(func=cmd_datalake_mapear)
+    p = sdl.add_parser("comparar",
+                       help="estoque HOD x MUL, passivo x cadastro, de-para, feriados, CDI e "
+                            "movimentacao; so agregados, sem cotista nem sacado")
+    p.add_argument("--data", required=True, help="posicao AAAA-MM-DD")
+    p.set_defaults(func=cmd_datalake_comparar)
 
     p_cart = sub.add_parser("carteira", help="diagnosticos sobre a carteira extraida")
     scr = p_cart.add_subparsers(dest="subcomando", required=True)

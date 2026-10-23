@@ -10,8 +10,9 @@ Cada funcao devolve `(sql, params)`.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
-from .tabelas import CARTEIRA, MEC, PASSIVO
+from .tabelas import CARTEIRA, ESTOQUE, MEC, PASSIVO
 
 Consulta = tuple[str, tuple]
 
@@ -30,9 +31,77 @@ def escapar_like(texto: str) -> str:
     return texto
 
 
+def cnpj_nos_dois_formatos(cnpj: str) -> tuple[str, str]:
+    """(com mascara, so digitos). Documento que nao tem 14 digitos vai como veio."""
+    digitos = re.sub(r"\D", "", str(cnpj or ""))
+    if len(digitos) != 14:
+        return str(cnpj), digitos
+    return f"{digitos[:2]}.{digitos[2:5]}.{digitos[5:8]}/{digitos[8:12]}-{digitos[12:]}", digitos
+
+
 # --- BD: estoque unificado (Consultar_Estoque_Unificado) --------------------
+#
+# Fonte: MUL_GLD_ESTOQUE do datalake desde 23/10/2026 (antes, a
+# HOD_TB_ESTOQUE_UNIFICADO do riscogc). A MUL junta o estoque dos
+# administradores (Singulare, Planner, QiTech) de onde a rotina do Datalake
+# remonta a HOD (usp_Carregar_HOD_TB_ESTOQUE_UNIFICADO). O de-para e as regras
+# sao os daquela procedure, que bateu chave e valores com o robo em 10/09/2026
+# (22 de 22 fundos):
+#   ID_Recebivel = dsSeuNumero + '_' + dsNuDocumento
+#   Prazo_*_Dias_Corridos = dias ate o vencimento ORIGINAL
+#   Valor_Presente = 0 no write-off (FAIXA_PDD WOM/WOP), como o robo
+#   uma linha por (data, fundo, ID_Recebivel); na repeticao vence a alteracao
+#   mais recente
+# Os apelidos devolvem os nomes da HOD, que tratamento, analise e fluxo leem.
+# O CNPJ vai nos dois formatos, com e sem mascara, porque a coluna nao tem um
+# so; o IN mantem o indice da data em uso.
+ESTOQUE_DE_PARA = (
+    ("Data_Posicao", "e.dtReferencia"),
+    ("Nome_Fundo", "e.dsNomeFundo"),
+    ("CNPJ_Fundo", "e.noDocFundo"),
+    ("ID_Recebivel", "CONCAT(e.dsSeuNumero, '_', e.dsNuDocumento)"),
+    ("Tipo_Recebivel", "e.dsTipoRecebivel"),
+    ("Status_Recebivel", "e.dsSituacaoRecebivel"),
+    ("Data_Aquisicao", "e.dtAquisicao"),
+    ("Data_Vencimento_Original", "e.dtVencimentoOriginal"),
+    ("Data_Vencimento_Ajustado", "e.dtVencimentoAjustada"),
+    ("Prazo_Dias_Uteis", "e.qtPrazo"),
+    ("Prazo_Atual_Dias_Uteis", "e.qtPrazoAtual"),
+    ("Prazo_Dias_Corridos", "DATEDIFF(DAY, e.dtAquisicao, e.dtVencimentoOriginal)"),
+    ("Prazo_Atual_Dias_Corridos", "DATEDIFF(DAY, e.dtReferencia, e.dtVencimentoOriginal)"),
+    ("Valor_Aquisicao", "e.vlAquisicao"),
+    ("Valor_Presente", "CASE WHEN UPPER(LTRIM(RTRIM(e.dsFaixaPdd))) IN ('WOM', 'WOP') THEN 0 ELSE e.vlPresente END"),
+    ("Valor_Futuro", "e.vlNominal"),
+    ("Taxa_Cessao", "e.txCessao"),
+    ("Taxa_Recebivel", "e.txRecebivel"),
+    ("Nome_Cedente", "e.dsNomeCedente"),
+    ("CNPJ_Cedente", "e.noDocCedente"),
+    ("Coobrigacao", "CASE WHEN UPPER(LEFT(LTRIM(e.dsCoobrigacao), 1)) IN ('S', 'Y', '1', 'T') THEN 1 ELSE 0 END"),
+    ("Nome_Sacado", "e.dsNomeSacado"),
+    ("CNPJ_Sacado", "e.noDocSacado"),
+    ("Data_Atualizacao", "e.dhAlteracao"),
+    ("VALOR_PDD", "e.vlPdd"),
+    ("FAIXA_PDD", "e.dsFaixaPdd"),
+    ("Sistema_Origem", "e.dsSistemaOrigem"),
+)
+
 
 def estoque_unificado(cnpj: str, data: dt.date | str) -> Consulta:
+    colunas = ", ".join(f"{expressao} AS {nome}" for nome, expressao in ESTOQUE_DE_PARA)
+    sql = (
+        f"SELECT {', '.join(nome for nome, _ in ESTOQUE_DE_PARA)} FROM ("
+        f"SELECT {colunas},"
+        " ROW_NUMBER() OVER (PARTITION BY e.dsSeuNumero, e.dsNuDocumento"
+        " ORDER BY e.dhAlteracao DESC, e.id DESC) AS rn"
+        f" FROM {ESTOQUE} AS e"
+        " WHERE e.dtReferencia = ? AND e.noDocFundo IN (?, ?)"
+        ") AS x WHERE x.rn = 1"
+    )
+    return sql, (_data(data), *cnpj_nos_dois_formatos(cnpj))
+
+
+def estoque_unificado_hod(cnpj: str, data: dt.date | str) -> Consulta:
+    """A consulta antiga (riscogc), so para o `datalake comparar`. Nao usar na rotina."""
     sql = (
         "SELECT * "
         "FROM dbo.HOD_TB_ESTOQUE_UNIFICADO "
@@ -157,7 +226,7 @@ SQL_ATUALIDADE = (
     ("carteira (datalake)", f"SELECT MAX(dtReferencia) AS u FROM {CARTEIRA} WITH (NOLOCK)"),
     ("passivo (datalake)", f"SELECT MAX(dtReferencia) AS u FROM {PASSIVO} WITH (NOLOCK)"),
     ("cotas MEC (datalake)", f"SELECT MAX(dtReferencia) AS u FROM {MEC} WITH (NOLOCK)"),
-    ("estoque HOD", "SELECT MAX(Data_Posicao) AS u FROM dbo.HOD_TB_ESTOQUE_UNIFICADO WITH (NOLOCK)"),
+    ("estoque (datalake)", f"SELECT MAX(dtReferencia) AS u FROM {ESTOQUE} WITH (NOLOCK)"),
     ("movimentacao HOD", "SELECT MAX(data_movimentacao) AS u FROM dbo.HOD_MCT_REU_MOVIMENTACAO_PROCESSADA WITH (NOLOCK)"),
     ("Beyond (leitura)", "SELECT MAX(Data) AS u FROM dbo.TB_LIQUIDEZ_OPERACOES_4 WITH (NOLOCK)"),
     ("curva DI1", "SELECT MAX(Data) AS u FROM dbo.TB_CURVA_JUROS_DIARIA WITH (NOLOCK) WHERE Mercadoria = 'DI1'"),

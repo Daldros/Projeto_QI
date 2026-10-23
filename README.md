@@ -12,10 +12,12 @@ por fundo (`fundos/<cnpj>.html`).
   variáveis `LIQUIDEZ_SERVIDOR`, `LIQUIDEZ_BANCO` e `LIQUIDEZ_BANCO_DATALAKE`.
   O gestor roda no HML (`10.201.1.6`, `riscogchml`). A documentação dele em
   `docs/gestor/` fala desse banco, e isso **não** vale aqui.
-- Desde 23/10/2026, carteira, passivo e série de cotas vêm direto do datalake
-  (`liquidez/tabelas.py`). Estoque, cadastro de fundos e movimentação (`HOD_*`)
+- Desde 23/10/2026, carteira, passivo, série de cotas e estoque vêm direto do
+  datalake (`liquidez/tabelas.py`). Cadastro de fundos e movimentação (`HOD_*`)
   ainda vêm do riscogc: `python -m liquidez datalake mapear` levanta as
-  equivalentes no datalake. Mapa completo em `docs/mapeamento-banco.md`.
+  equivalentes no datalake e `python -m liquidez datalake comparar --data
+  AAAA-MM-DD` confere as candidatas, só com agregados. Mapa completo em
+  `docs/mapeamento-banco.md`.
 - Pacote do gestor de 21/10/2026 integrado (`docs/pacote-gestor-2026-10-21.md`):
   - voltaram os módulos `relatorio_excel`, `documentacao` e `cra`;
   - a tabela de prazos, a lista de excluídos e as decisões por fundo entraram

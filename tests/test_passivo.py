@@ -62,7 +62,7 @@ def test_atualidade_mostra_cada_base_e_nao_para_em_falha(monkeypatch, capsys):
     assert cli.main(["atualidade"]) == 0
     saida = capsys.readouterr().out
     no_datalake = sum("datalake." in sql for _, sql in q.SQL_ATUALIDADE)
-    assert no_datalake == 3                     # carteira, passivo e cotas (MEC)
+    assert no_datalake == 4                     # carteira, passivo, cotas (MEC) e estoque
     assert saida.count("2026-10-06") == len(q.SQL_ATUALIDADE) - no_datalake - 1
     assert saida.count("(falhou: The SELECT permission was denied on the object)") == no_datalake
     assert f"{'CDI (TB_TAXAS)':<28} (vazia)" in saida

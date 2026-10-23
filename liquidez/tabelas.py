@@ -8,10 +8,11 @@ no riscogc, e a serie de cotas da HOD_TB_COTAS_FUNDOS, que a mesma rotina
 recarrega a partir da MEC. Quando a rotina nao rodava, a liquidez parava junto
 (logs com buracos de 10 a 14/10 e em 17 e 18/10/2026).
 
-O que segue no riscogc e so o que ainda nao tem fonte conhecida no datalake:
-estoque, cadastro de fundos e movimentacao (HOD_*), Beyond, curva, CDI,
-distribuidores, feriados e o de-para do Beyond. `python -m liquidez datalake
-mapear` procura as equivalentes.
+O estoque veio em seguida (MUL_GLD_ESTOQUE). O que segue no riscogc e so o
+que ainda nao tem fonte conhecida no datalake: cadastro de fundos e
+movimentacao (HOD_*), Beyond, curva, CDI, distribuidores, feriados e o de-para
+do Beyond. `python -m liquidez datalake mapear` procura as equivalentes e
+`datalake comparar` confere as candidatas contra o que se le hoje.
 
 O nome do banco vem de LIQUIDEZ_BANCO_DATALAKE (padrao `datalake`), como o
 servidor e o banco principal em `db.py`.
@@ -37,6 +38,9 @@ def no_datalake(tabela: str) -> str:
 
 CARTEIRA = no_datalake("MUL_GLD_CARTEIRA_UNIFICADA")
 PASSIVO = no_datalake("MUL_GLD_PASSIVO_CONSOLIDADO")
+# Estoque de recebiveis dos administradores, com indice na data (~125 mil
+# linhas por dia em 22/10/2026).
+ESTOQUE = no_datalake("MUL_GLD_ESTOQUE")
 # Cota e PL por carteira (`idCliente`). E a fonte da HOD_TB_COTAS_FUNDOS desde
 # 10/09/2026 (usp_Carregar_HOD_TB_COTAS_FUNDOS, projeto Datalake).
 MEC = no_datalake("MUL_GLD_MEC_CONSOLIDADA")

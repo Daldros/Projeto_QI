@@ -74,7 +74,7 @@ ETAPAS: tuple[Etapa, ...] = (
         funcao="tratamentos.separar_ativos_vencidos_bd",
         resumo="Levanta quais sacados têm algum recebível vencido. Serve para identificar, na "
                "etapa 4, o estoque com carrego.",
-        entrada="Base <code>bd</code> (HOD_TB_ESTOQUE_UNIFICADO)",
+        entrada="Base <code>bd</code> (MUL_GLD_ESTOQUE, banco datalake)",
         saida="Lista de CNPJ de sacados — era a coluna E da aba <code>Vencidos</code>",
         regra=[
             "No estoque a coluna <code>Status_Recebivel</code> vem preenchida corretamente e é o "

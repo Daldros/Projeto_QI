@@ -664,7 +664,7 @@ def montar(paginas: list[tuple[dict, dict]], data_base: dt.date, insumos: dict) 
         "<p class='sub'>Uma página por fundo, na ordem da pergunta do comitê: enquadramento, de onde vem a liquidez, o que pode sair, cobertura por vértice, estresse e as premissas que sustentam cada número.</p>"
         f"<div class='capa'>{capa}</div><div class='insumos'>{ins}</div></div></header>"
         f"<main class='wrap'>{corpo}"
-        f"<div class='rodape'><span>Multiplica · risco de liquidez · fonte: datalake (carteira, passivo) e riscogc (estoque, Beyond, curva) · posição {data_base:%d/%m/%Y}</span>"
+        f"<div class='rodape'><span>Multiplica · risco de liquidez · fonte: datalake (carteira, estoque, passivo) e riscogc (Beyond, curva) · posição {data_base:%d/%m/%Y}</span>"
         "<span>gerado por python -m liquidez apresentacao · plano em docs/plano-apresentacao.md</span></div></main>"
         f"<script>{JS}</script></body></html>"
     )

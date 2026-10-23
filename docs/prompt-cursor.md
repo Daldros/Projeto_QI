@@ -961,3 +961,54 @@ Me devolva a saída literal dos passos 1, 3, 6, 7, 8 e 12 e, SEM resumir:
 NÃO rode os scripts da raiz (analise_passivo, grafo_passivo, passivo_gestor):
 o HTML deles traz CPF e nome de cotista. NÃO envie .html, .xlsx nem bi\.
 ```
+
+## Rodada 25 (23/10/2026) — estoque direto do datalake + conferência do resto
+
+O estoque (base `bd`) troca a `HOD_TB_ESTOQUE_UNIFICADO` pela `MUL_GLD_ESTOQUE`
+do datalake, com o de-para da carga da HOD (`ID_Recebivel` = seu número +
+documento, valor presente zero no write-off). O comando novo `datalake comparar`
+põe lado a lado, só com agregados: estoque HOD x MUL por fundo; as classes do
+passivo que o filtro do cadastro tira da consulta; o de-para de fundos do
+datalake x cadastro; feriados; CDI; e as fontes de movimentação. A rodada 24 já
+deixou `config\fundos` com 17 fichas; não rode `configurar`. Tudo é SELECT.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/optimistic-allen-cpugky e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 3. Rode no cmd (não no
+PowerShell), caminho absoluto na redireção, um passo de cada vez, sem encadear
+com &&. Qualquer falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin
+3. git merge --no-ff --no-edit origin/claude/optimistic-allen-cpugky   (conflito = PARE)
+4. git log --oneline -4 | findstr /C:"MUL_GLD_ESTOQUE"   (precisa mostrar 1 linha)
+5. .venv\Scripts\python -m pytest -q
+   (esperado: 111 passed; qualquer outro resultado, PARE e NÃO faça o passo 6)
+6. git push origin main
+7. .venv\Scripts\python -m liquidez atualidade > C:\Users\mateus.castagnet\mapa_banco\liq25_atualidade.txt 2>&1
+8. .venv\Scripts\python -m liquidez datalake comparar --data 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq25_comparar.txt 2>&1
+9. .venv\Scripts\python -m liquidez extrair --data 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq25_extrair.txt 2>&1
+   (LOTE, sem --fundo: agora o estoque também vem do datalake)
+10. .venv\Scripts\python -m liquidez tratar --fundo "MULTIPLICA FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq25_tratar_lp.txt 2>&1
+    .venv\Scripts\python -m liquidez tratar --fundo "MULTIPLICA LONG TERM FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq25_tratar_lt.txt 2>&1
+    .venv\Scripts\python -m liquidez tratar --fundo "MULTIAGRO FIDC" --salvar > C:\Users\mateus.castagnet\mapa_banco\liq25_tratar_ma.txt 2>&1
+11. .venv\Scripts\python -m liquidez cotas serie --ate 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq25_cotas.txt 2>&1
+    (sem --destino: grava em bi\ para o painel ter retorno e VaR)
+12. .venv\Scripts\python -m liquidez fatos gerar > C:\Users\mateus.castagnet\mapa_banco\liq25_fatos.txt 2>&1
+    .venv\Scripts\python -m liquidez painel > C:\Users\mateus.castagnet\mapa_banco\liq25_painel.txt 2>&1
+
+Me devolva a saída literal dos passos 1, 3, 4, 5 e 6 e ANEXE (não cole) os
+arquivos liq25_atualidade, liq25_comparar e liq25_cotas inteiros (só
+contagens, somas, fundos, classes e datas; sem cotista nem sacado). Cole, SEM
+resumir:
+- do liq25_extrair, as 40 últimas linhas;
+- dos liq25_tratar_*, da linha "Fundo ....." até a linha "ANBIMA enquadrado
+  ate" (inclusive). NÃO cole a "Tabela vencidos" (CPF e nome de sacado PF);
+- as 15 últimas linhas do liq25_fatos e o liq25_painel inteiro.
+NÃO rode os scripts da raiz (analise_passivo, grafo_passivo, passivo_gestor):
+o HTML deles traz CPF e nome de cotista. NÃO envie .html, .xlsx nem bi\.
+```
