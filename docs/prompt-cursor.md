@@ -933,8 +933,9 @@ falha, PARE e devolva a saída inteira.
 7. .venv\Scripts\python -m pytest -q          (esperado: 101 passed)
 8. git push origin main
 9. .venv\Scripts\python -m liquidez atualidade > C:\Users\mateus.castagnet\mapa_banco\liq24_atualidade.txt 2>&1
-   (as três primeiras linhas são do datalake; se alguma disser "falhou", PARE:
-    o login não está lendo o datalake e o resto depende disso)
+   (abra o arquivo: se a linha "carteira (datalake)", "passivo (datalake)" ou
+    "cotas MEC (datalake)" disser "falhou", PARE: o login não está lendo o
+    datalake e o resto depende disso)
 10. .venv\Scripts\python -m liquidez datalake mapear --ate 2026-10-21 > C:\Users\mateus.castagnet\mapa_banco\liq24_mapa_datalake.txt 2>&1
 11. .venv\Scripts\python -m liquidez cotas serie --ate 2026-10-21 --destino C:\Users\mateus.castagnet\mapa_banco\liq24_bi_depois > C:\Users\mateus.castagnet\mapa_banco\liq24_cotas_depois.txt 2>&1
 12. dir /b config\fundos\*.json | find /c ".json"
