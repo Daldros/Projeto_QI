@@ -253,3 +253,108 @@ def test_cli_troca_passivo_comparar_por_datalake_mapear():
     assert args.func is cli.cmd_datalake_mapear and args.ate == "2026-10-21"
     with pytest.raises(SystemExit):
         parser.parse_args(["passivo", "comparar", "--data", "2026-10-21"])
+
+
+# --- estoque pela MUL_GLD_ESTOQUE -------------------------------------------------
+
+def test_estoque_vem_da_mul_com_os_nomes_da_hod():
+    sql, params = q.estoque_unificado("23.216.398/0001-01", "2026-10-21")
+    assert "FROM datalake.dbo.MUL_GLD_ESTOQUE AS e" in sql and "HOD_" not in sql
+    # o CNPJ vai com e sem mascara; a data primeiro (indice)
+    assert params == ("2026-10-21", "23.216.398/0001-01", "23216398000101")
+    assert "e.dtReferencia = ? AND e.noDocFundo IN (?, ?)" in sql
+    # regras da carga da HOD (usp_Carregar_HOD_TB_ESTOQUE_UNIFICADO)
+    assert "CONCAT(e.dsSeuNumero, '_', e.dsNuDocumento) AS ID_Recebivel" in sql
+    assert "IN ('WOM', 'WOP') THEN 0 ELSE e.vlPresente END AS Valor_Presente" in sql
+    assert "DATEDIFF(DAY, e.dtReferencia, e.dtVencimentoOriginal) AS Prazo_Atual_Dias_Corridos" in sql
+    assert "ORDER BY e.dhAlteracao DESC, e.id DESC) AS rn" in sql and sql.endswith("WHERE x.rn = 1")
+    # tudo o que tratamento, analise e fluxo leem do BD
+    for coluna in ("Data_Posicao", "CNPJ_Fundo", "ID_Recebivel", "Tipo_Recebivel", "Status_Recebivel",
+                   "Prazo_Atual_Dias_Corridos", "Valor_Presente", "Nome_Sacado", "CNPJ_Sacado", "FAIXA_PDD"):
+        assert f"AS {coluna}" in sql and f" {coluna}," in sql.split(" FROM (")[0] + ","
+
+
+def test_cnpj_nos_dois_formatos():
+    assert q.cnpj_nos_dois_formatos("23216398000101") == ("23.216.398/0001-01", "23216398000101")
+    assert q.cnpj_nos_dois_formatos("23.216.398/0001-01") == ("23.216.398/0001-01", "23216398000101")
+    assert q.cnpj_nos_dois_formatos("123") == ("123", "123")
+
+
+def test_hod_de_estoque_so_sobra_na_comparacao():
+    from liquidez import extrator
+
+    sql, _ = extrator._consulta_da_base("bd", type("F", (), {"cnpj": "23.216.398/0001-01"})(), "2026-10-21")
+    assert "MUL_GLD_ESTOQUE" in sql
+    assert "HOD_TB_ESTOQUE_UNIFICADO" in q.estoque_unificado_hod("x", "2026-10-21")[0]
+    assert all("HOD_TB_ESTOQUE" not in s for _, s in q.SQL_ATUALIDADE)
+
+
+# --- datalake comparar --------------------------------------------------------------
+
+from liquidez import comparar_datalake as cd  # noqa: E402
+
+
+def test_comparacao_de_estoque_so_tem_agregados():
+    hod = pd.DataFrame({"ID_Recebivel": ["A_1", "A_2", "C1"], "Valor_Presente": [100.0, 50.0, 900.0],
+                        "Status_Recebivel": ["A vencer", "Vencido", "A vencer"],
+                        "Origem_Importacao": ["RoboEstoque", "RoboEstoque", "EstoqueCarteira"],
+                        "Nome_Sacado": ["FULANO", "FULANO", "X"]})
+    mul = pd.DataFrame({"ID_Recebivel": ["A_1", "A_2", "B_3"], "Valor_Presente": [100.0, 55.0, 70.0],
+                        "Status_Recebivel": ["A vencer", "VENCIDO", "A vencer"],
+                        "Sistema_Origem": ["SINGULARE", "SINGULARE", "PLANNER"], "Nome_Sacado": ["FULANO"] * 3})
+    texto = "\n".join(cd.comparar_estoque_fundo("FUNDO", "00.000.000/0001-00", "2026-10-21", hod, mul,
+                                                {"linhas": 4, "chaves": 3, "dt_fundo_diferente": 1}))
+    assert "nos dois 2 (diferenca de VP R$ mil 0.01); so na HOD 1 (R$ mil 0.90); so na MUL 1 (R$ mil 0.07)" in texto
+    assert "EstoqueCarteira=1" in texto and "PLANNER=1" in texto
+    assert "1 repetida(s)" in texto and "dtFundo diferente de dtReferencia em 1" in texto
+    assert "FULANO" not in texto
+
+
+def test_situacao_da_classe_no_filtro_do_cadastro():
+    cad = pd.DataFrame({"Situacao": ["NORMAL", "NORMAL"], "nmCotaInterno": ["ORIGINAL", "SENIOR"]})
+    assert cd.situacao_no_cadastro(cad) == "entra"
+    assert cd.situacao_no_cadastro(cad.iloc[:1]) == "rotulo ORIGINAL"
+    assert cd.situacao_no_cadastro(pd.DataFrame({"Situacao": ["TRANSFER"], "nmCotaInterno": ["UNICA"]})) == "situacao TRANSFER"
+    assert cd.situacao_no_cadastro(pd.DataFrame({"Situacao": ["NORMAL"], "nmCotaInterno": [None]})) == "rotulo ORIGINAL"
+    assert cd.situacao_no_cadastro(pd.DataFrame(columns=["Situacao", "nmCotaInterno"])) == "sem cadastro"
+
+
+def test_feriados_comparam_dias_de_semana():
+    aud = pd.DataFrame({"dtFeriado": ["2026-10-12", "2026-11-02", "2026-11-21"],   # 21/11 e sabado
+                        "dsFeriado": ["Aparecida", "Finados", "x"]})
+    cal = pd.DataFrame({"dtData": ["2026-11-02", "2026-12-24"], "dsFeriado": ["Finados", None],
+                        "flDiaUtil": [False, True], "flDiaUtilB3": [False, False]})
+
+    def falso(sql, params=()):
+        return aud.copy() if sql is cd.SQL_FERIADOS_AUD else cal.copy()
+
+    texto = "\n".join(cd.parte_feriados(falso))
+    assert "AUD_DIM_FERIADOS 2" in texto
+    assert "flDiaUtil = 0: 1; so na AUD 1, so no calendario 0" in texto
+    assert "flDiaUtilB3 = 0: 2; so na AUD 1, so no calendario 1" in texto
+    assert "12/10/2026 Aparecida" in texto
+
+
+def test_comparar_roda_as_seis_partes_e_nao_para_em_falha(monkeypatch):
+    def falso(sql, params=()):
+        raise RuntimeError("The SELECT permission was denied\nmais")
+
+    monkeypatch.setattr(db, "consultar", falso)
+    texto = "\n".join(cd.comparar(fichas=(), data="2026-10-21"))
+    for n in range(1, 7):
+        assert f"\n== {n}. " in texto
+    assert "(cadastro local vazio" in texto.split("== 2.")[0]
+    assert texto.count("(falhou: The SELECT permission was denied)") == 5
+
+
+def test_sql_do_comparar_nao_le_cotista_nem_sacado():
+    for sql in (cd.SQL_ESTOQUE_BRUTO, cd.SQL_PASSIVO_POR_CLASSE, cd.SQL_DEPARA, cd.SQL_MOV_SINGULARE_DIA,
+                cd.SQL_MOV_SINGULARE_TIPOS):
+        cabeca = sql.split("FROM")[0]
+        for coluna in ("dsNomeCotista", "docCotista", "dsDocumentoCotista", "dsNomeSacado", "noDocSacado"):
+            assert coluna not in cabeca
+
+
+def test_cli_tem_datalake_comparar():
+    args = cli.construir_parser().parse_args(["datalake", "comparar", "--data", "2026-10-21"])
+    assert args.func is cli.cmd_datalake_comparar and args.data == "2026-10-21"

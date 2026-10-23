@@ -16,13 +16,14 @@ lido pelo nome em três partes (`datalake.dbo.TABELA`). Os nomes ficam em
 | carteira | `MUL_GLD_CARTEIRA_UNIFICADA` | datalake (até 23/10, clone no riscogc) |
 | passivo | `MUL_GLD_PASSIVO_CONSOLIDADO` | datalake (de 21 a 23/10, clone no riscogc) |
 | série de cotas | `MUL_GLD_MEC_CONSOLIDADA` + `DLK_DEPARA_FUNDOS` | datalake (até 23/10, `HOD_TB_COTAS_FUNDOS`) |
-| estoque | `HOD_TB_ESTOQUE_UNIFICADO` | riscogc, sem equivalente conhecido |
-| cadastro de fundos | `HOD_TB_CADASTRO_FUNDOS` | riscogc, sem equivalente conhecido |
-| movimentação | `HOD_MCT_REU_MOVIMENTACAO_PROCESSADA` | riscogc, sem equivalente conhecido |
-| Beyond, curva, CDI, distribuidores, feriados, de-para do Beyond | `TB_*`, `AUD_DIM_*` | riscogc |
+| estoque | `MUL_GLD_ESTOQUE` | datalake (até 23/10, `HOD_TB_ESTOQUE_UNIFICADO` no riscogc) |
+| cadastro de fundos | `HOD_TB_CADASTRO_FUNDOS` | riscogc; `DLK_DEPARA_FUNDOS` tem CNPJ e cota, mas não prazo de resgate nem ISIN |
+| movimentação | `HOD_MCT_REU_MOVIMENTACAO_PROCESSADA` | riscogc; no datalake só há tabelas por administrador |
+| Beyond, curva, CDI, distribuidores, feriados, de-para do Beyond | `TB_*`, `AUD_DIM_*` | riscogc; candidatas a feriados (`DLK_CALENDARIO_B3`) e CDI (`CDH_GLD_INDICES_MERCADO`) em conferência |
 
 O que ainda vem do riscogc é procurado no datalake por
-`python -m liquidez datalake mapear` (item 11).
+`python -m liquidez datalake mapear` e conferido contra o que se lê hoje por
+`python -m liquidez datalake comparar --data AAAA-MM-DD` (item 11).
 
 Legenda da coluna **Uso**: `rotina` = `rodar_diario.ps1`; `config` = só no
 `configurar` / `cotas sincronizar`; `avulso` = scripts da raiz, fora da rotina.
@@ -57,20 +58,32 @@ nomes que o tratamento usa; o de-para vive só no SQL.
 Valores esperados em `dsBaseOrigem`: ver `config/parametros/produtos.json` e
 `grafo_fundo.BASES_COTA`. Rótulo novo cai fora do caixa sem erro.
 
-## 2. Estoque de recebíveis — `dbo.HOD_TB_ESTOQUE_UNIFICADO` (rotina)
+## 2. Estoque de recebíveis — `datalake.dbo.MUL_GLD_ESTOQUE` (rotina)
 
-`SELECT *` filtrado por `CNPJ_Fundo` e `Data_Posicao` (`queries.py`). Colunas
-que o tratamento e a análise leem depois:
+Desde 23/10/2026 (`queries.estoque_unificado`); antes, `SELECT *` na
+`HOD_TB_ESTOQUE_UNIFICADO` do riscogc, que fica só no `datalake comparar`. A MUL
+junta o estoque dos administradores (Singulare, Planner, QiTech) de onde a rotina
+do Datalake remonta a HOD (`usp_Carregar_HOD_TB_ESTOQUE_UNIFICADO`, validada
+contra o robô em 10/09: 22 de 22 fundos). Tem índice em `dtReferencia` (~125 mil
+linhas por dia). O de-para e as regras são os daquela procedure, e os apelidos
+devolvem os nomes da HOD:
 
-| Coluna | Para que serve |
-|---|---|
-| `CNPJ_Fundo`, `Data_Posicao` | filtros |
-| `Valor_Presente` | valor do recebível; cota "A Vencer" e pool do próprio fundo |
-| `Status_Recebivel` | `VENCIDO` / `A VENCER` (regra `_estoque` em `regras_vencidos.json`) |
-| `Prazo_Atual_Dias_Corridos` | faixa de prazo do recebível |
-| `CNPJ_Sacado` | carrego: sacado com título vencido tira todos os seus a vencer do caixa |
-| `ID_Recebivel` | casa com `Codigo_Op` da carteira para não contar o DC duas vezes |
-| `Tipo_Recebivel`, `Nome_Sacado`, `FAIXA_PDD` | diagnóstico; `FAIXA_PDD` deixou de ser filtro em 10/08/2026 |
+| HOD (o que o código lê) | MUL_GLD_ESTOQUE | Para que serve |
+|---|---|---|
+| `CNPJ_Fundo`, `Data_Posicao` | `noDocFundo` (com e sem máscara no `IN`), `dtReferencia` | filtros |
+| `ID_Recebivel` | `dsSeuNumero + '_' + dsNuDocumento` | casa com `Codigo_Op` da carteira (estoque próprio do fundo sai da etapa 8) |
+| `Valor_Presente` | `vlPresente`; **0** com `dsFaixaPdd` WOM/WOP (write-off, como o robô) | valor do recebível; cota "A Vencer" e pool do próprio fundo |
+| `Status_Recebivel` | `dsSituacaoRecebivel` | `VENCIDO` / `A VENCER` sem diferenciar maiúsculas (regra `_estoque` em `regras_vencidos.json`) |
+| `Prazo_Atual_Dias_Corridos` | dias de `dtReferencia` a `dtVencimentoOriginal` | faixa de prazo do recebível |
+| `CNPJ_Sacado`, `Nome_Sacado` | `noDocSacado`, `dsNomeSacado` | carrego: sacado com título vencido tira todos os seus a vencer do caixa |
+| `Tipo_Recebivel`, `FAIXA_PDD` | `dsTipoRecebivel`, `dsFaixaPdd` | diagnóstico; `FAIXA_PDD` deixou de ser filtro em 10/08/2026 |
+| `Sistema_Origem` | `dsSistemaOrigem` | auditoria (coluna nova) |
+
+Uma linha por (data, fundo, `ID_Recebivel`): na repetição vence a de
+`dhAlteracao` mais recente. As linhas que o robô montava a partir da carteira
+(`Origem_Importacao` EstoqueCarteira) e as digitadas (Pré Trade) não existem na
+MUL; as primeiras já saíam da etapa 8 como estoque próprio do fundo. A parte 1
+do `datalake comparar` mostra, fundo a fundo, o que só uma das fontes tem.
 
 ## 3. Passivo (rotina)
 
@@ -224,10 +237,10 @@ tabelas de passivo (item 3), o cadastro e a carteira (`docFundo`,
 - **Os `MUL_GLD_*` do riscogc são clones do banco `datalake`**, refeitos pela
   rotina do projeto do Datalake (`python main.py --rodar-clones`, tarefa
   "DLK Clonar TODOS"). Desde 23/10/2026 a liquidez lê a origem e não depende
-  mais deles. A mesma rotina recarrega a HOD de estoque e movimentação, que a
-  liquidez ainda lê: se ela não roda, essas duas param. A tarefa roda às 18:30
-  só com o usuário logado ("Interativo apenas"); os logs têm buracos (10 a
-  14/10, 17 e 18/10).
+  mais deles. A mesma rotina recarrega a HOD de movimentação, que a liquidez
+  ainda lê: se ela não roda, a movimentação para. A tarefa roda às 18:30 só
+  com o usuário logado ("Interativo apenas"); os logs têm buracos (10 a 14/10,
+  17 e 18/10).
 - **Collation**: o datalake e o riscogc podem ter collations diferentes. Junção
   de coluna de texto entre os dois bancos precisa de `COLLATE DATABASE_DEFAULT`
   nos dois lados (como em `queries.PASSIVO_JOIN_FUNDO`); junção dentro do mesmo
@@ -241,22 +254,20 @@ tabelas de passivo (item 3), o cadastro e a carteira (`docFundo`,
 
 ## 11. O que falta trazer para o datalake
 
-`python -m liquidez datalake mapear` (só `SELECT`, só metadados e agregados)
-levanta o que é preciso para trocar o resto. Nenhum repositório tem as colunas
-das `MUL_GLD_*` novas do datalake (`ESTOQUE`, `COTISTAS`, `COTISTAS_ADM`,
-`AQUISICOES`, citadas no projeto Datalake em 23/10/2026), então a troca
-seguinte depende da saída dele:
+`python -m liquidez datalake mapear` levantou o datalake em 23/10/2026 (456
+objetos; o mapa completo está na rodada 24). `python -m liquidez datalake
+comparar --data AAAA-MM-DD` confere as candidatas contra o que se lê hoje, só
+com agregados:
 
-| Ainda no riscogc | Candidata no datalake | O que o mapa responde |
+| Ainda no riscogc | Candidata no datalake | O que o `comparar` responde |
 |---|---|---|
-| `HOD_TB_ESTOQUE_UNIFICADO` | `MUL_GLD_ESTOQUE` | colunas (valor presente, status, sacado, ID do recebível, prazo), datas e volume por dia |
-| `HOD_TB_CADASTRO_FUNDOS` | nenhuma conhecida | tabelas com `CADASTRO`/`FUNDO`/`CLASSE` no nome e colunas `ISIN`, `Condominio`, `Liquidacao`, `Carencia` |
-| `HOD_MCT_REU_MOVIMENTACAO_PROCESSADA` | nenhuma MUL conhecida (`QIT_GLD_MOVIMENTACAO_FUNDOS_SINGULARE` só cobre a Singulare) | tabelas e colunas de resgate/movimentação; a HOD é calculada da posição do passivo |
-| `TB_LIQUIDEZ_OPERACOES_4`, `TB_CURVA_JUROS_DIARIA`, `TB_TAXAS`, `TB_PASSIVO_DISTRIBUIDORES`, `AUD_DIM_FERIADOS`, `AUD_DIM_DEPARA_FUNDOS` | — | candidatas por nome em qualquer prefixo |
+| `HOD_TB_ESTOQUE_UNIFICADO` | `MUL_GLD_ESTOQUE` (**já em uso**) | parte 1: linhas, valor presente por situação, recebíveis só de um lado, origem e sistema, chave repetida |
+| `HOD_TB_CADASTRO_FUNDOS` no passivo | `docFundo`/`dsClasse` do próprio passivo (CNPJ igual em 122 de 122 classes) | parte 2: classes que o filtro do cadastro (`Situacao` NORMAL e `nmCotaInterno` diferente de ORIGINAL) tira da consulta, e o saldo delas |
+| `HOD_TB_CADASTRO_FUNDOS` na série de cotas | `DLK_DEPARA_FUNDOS` (`noCnpjDigitos`, `dsCota`) | parte 3: CNPJ e classe do de-para x cadastro; fundos do cadastro local com e sem série |
+| `AUD_DIM_FERIADOS` | `DLK_CALENDARIO_B3` (2020–2030, `flDiaUtil`, `flDiaUtilB3`) | parte 4: dias de semana que só um dos dois tem |
+| `TB_TAXAS` (CDI) | `CDH_GLD_INDICES_MERCADO` | parte 5: colunas, índices e últimas linhas do CDI x `TB_TAXAS` |
+| `HOD_MCT_REU_MOVIMENTACAO_PROCESSADA` | nenhuma MUL; `QIT_GLD_MOVIMENTACAO_FUNDOS_SINGULARE` e as de QiTech, Planner (JCOT), BTG e Minicom | parte 6: RCO de hoje x maior resgate de um dia na Singulare, datas por mês do passivo (de onde a HOD é calculada) e o perfil das outras fontes |
+| `TB_LIQUIDEZ_OPERACOES_4`, `TB_CURVA_JUROS_DIARIA`, `TB_PASSIVO_DISTRIBUIDORES`, `AUD_DIM_DEPARA_FUNDOS` | nenhuma | — |
 
-As oito partes do mapa: conexão (login, acesso e collation dos dois bancos);
-inventário das `MUL_*`/`DLK_*`; colunas de cada uma; datas (primeira, última,
-linhas no último dia, sem varrer tabela grande sem índice na data); candidatas
-por nome; colunas com os nomes que a liquidez usa; fundos do cadastro local com
-e sem série de cotas na MEC; e se as colunas do próprio passivo (`docFundo`,
-`dsClasse`) dão conta do cadastro.
+Prazo de resgate, condomínio e ISIN dos fundos (o resto do cadastro) não existem
+no datalake, exceto para fundos BTG (`BTG_GLD_FUNDOS_BTG`).
