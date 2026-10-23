@@ -1,0 +1,23 @@
+{
+  "_comentario": [
+    "De-para do rotulo de produto (Base_Origem) da carteira do riscogc para o rotulo que o",
+    "codigo espera. O gestor construiu tudo sobre 'DC' (direitos creditorios: NC, CCB, CCE,",
+    "debenture de cessao), mas a HOD_TB_CARTEIRA_UNIFICADA do Datalake grava essas linhas como",
+    "'Renda Fixa' (modalidades CDI, PRE, DOL MTM) -- visto em 05/10/2026 no MULTIPLICA FIDC,",
+    "384 linhas, R$ 864 mi, todas com Codigo_Op C######.",
+    "A troca so vale para a linha cujo Codigo_Op casa com `codigo_op_regex`: titulo publico ou",
+    "outro papel que venha sob 'Renda Fixa' sem codigo de operacao continua 'Renda Fixa'.",
+    "O rotulo original fica em Base_Origem_Fonte.",
+    "`excluir_codigo_ativo_regex` mantem fora do DC o que nao e direito creditorio mesmo com codigo",
+    "de operacao: titulo publico/compromissada (LFT, LTN, NTN), CDB e imovel (IMOVE) -- no",
+    "MULTIPLICA FIDC em 30/09/2026, 65 linhas e R$ 52 mi que iam para a fila de bullet."
+  ],
+  "depara_base_origem": [
+    {
+      "de": "Renda Fixa",
+      "para": "DC",
+      "codigo_op_regex": "^C\\d{4,}$",
+      "excluir_codigo_ativo_regex": "^(LFT|LTN|NTN|CDB|IMOVE)"
+    }
+  ]
+}

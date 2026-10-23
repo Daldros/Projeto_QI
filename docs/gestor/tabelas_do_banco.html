@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabelas do Banco Utilizadas</title>
+<style>
+:root {
+  --fundo: #ffffff; --fundo2: #f6f7f9; --texto: #1b1d21; --suave: #5c6169;
+  --borda: #e2e5ea; --acento: #1f5fa9; --ok: #1a7f4b; --pendente: #a35c00;
+  --codigo-fundo: #f0f2f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fundo: #16181c; --fundo2: #1e2126; --texto: #e6e8ec; --suave: #9aa1ab;
+    --borda: #2e333b; --acento: #74a9e8; --ok: #4cc38a; --pendente: #e0a458;
+    --codigo-fundo: #23272e;
+  }
+}
+:root[data-theme="dark"] {
+  --fundo: #16181c; --fundo2: #1e2126; --texto: #e6e8ec; --suave: #9aa1ab;
+  --borda: #2e333b; --acento: #74a9e8; --ok: #4cc38a; --pendente: #e0a458;
+  --codigo-fundo: #23272e;
+}
+:root[data-theme="light"] {
+  --fundo: #ffffff; --fundo2: #f6f7f9; --texto: #1b1d21; --suave: #5c6169;
+  --borda: #e2e5ea; --acento: #1f5fa9; --ok: #1a7f4b; --pendente: #a35c00;
+  --codigo-fundo: #f0f2f5;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--fundo); color: var(--texto); margin: 0;
+  font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.pagina { max-width: 58rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 1.8rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+h2 { font-size: 1.2rem; margin: 2.5rem 0 .8rem; padding-bottom: .4rem;
+     border-bottom: 2px solid var(--borda); }
+p { margin: .6rem 0; }
+.sub { color: var(--suave); margin: 0 0 1.5rem; font-size: .95rem; }
+code { background: var(--codigo-fundo); padding: .1em .35em; border-radius: 4px;
+       font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .87em; }
+.rolagem { overflow-x: auto; margin: 1rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--borda);
+         vertical-align: top; }
+th { color: var(--suave); font-size: .78rem; text-transform: uppercase;
+     letter-spacing: .04em; font-weight: 650; }
+td.obj { white-space: nowrap; font-family: ui-monospace, Consolas, monospace;
+         font-size: .84rem; font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: var(--fundo2); }
+.etapa { background: var(--fundo2); border: 1px solid var(--borda);
+         border-left: 4px solid var(--acento); border-radius: 10px;
+         padding: .9rem 1.1rem; margin: 1rem 0; }
+.etapa.pendente { border-left-color: var(--pendente); }
+.etapa.ok { border-left-color: var(--ok); }
+.etapa > :first-child { margin-top: 0; }
+.etapa > :last-child { margin-bottom: 0; }
+.etapa strong { display: block; margin-bottom: .2rem; }
+.marca { font-size: .72rem; font-weight: 650; text-transform: uppercase;
+         letter-spacing: .05em; padding: .15rem .5rem; border-radius: 20px;
+         border: 1px solid currentColor; }
+.marca.ok { color: var(--ok); }
+.marca.pendente { color: var(--pendente); }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--borda);
+         color: var(--suave); font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="pagina">
+
+<h1>Tabelas do banco utilizadas pelo código</h1>
+<p class="sub">Levantado em 25/09/2026, varrendo os 54 arquivos <code>.py</code> dos
+projetos (fora de <code>.env</code>, <code>site-packages</code> e
+<code>__pycache__</code>). Para a atualização do banco em produção.</p>
+
+<div class="etapa ok">
+  <p><span class="marca ok">Somente leitura</span> &nbsp;Nenhum <code>INSERT</code>,
+  <code>UPDATE</code>, <code>DELETE</code>, <code>MERGE</code>, <code>TRUNCATE</code>
+  ou DDL no código. A aplicação precisa apenas de <code>SELECT</code> nesses objetos.</p>
+</div>
+
+<h2>Tabelas — schema <code>dbo</code></h2>
+
+<div class="rolagem">
+<table>
+<thead>
+<tr><th>Tabela</th><th class="n">Refs</th><th>Onde é usada</th><th>Para que serve</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td class="obj">HOD_TB_CADASTRO_FUNDOS</td><td class="n">19</td>
+  <td>liquidez</td>
+  <td>Cadastro dos fundos: CNPJ, nome interno, administrador, tipo, situação. Chave em quase tudo.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_PAS_POSICAO_NOTA</td><td class="n">16</td>
+  <td>liquidez</td>
+  <td>Passivo: posição de cada cotista por nota.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_PAS_CAD_COTISTA</td><td class="n">12</td>
+  <td>liquidez</td>
+  <td>Passivo: cadastro dos cotistas (nome, CPF/CNPJ).</td>
+</tr>
+<tr>
+  <td class="obj">TB_LIQUIDEZ_OPERACOES_4</td><td class="n">12</td>
+  <td>liquidez — beyond_cronograma, carregar_multiplica_fidc, filtrar_titulo_multiplica, queries</td>
+  <td>Operações com cronograma, incluindo a captura do Beyond.</td>
+</tr>
+<tr>
+  <td class="obj">TB_TAXAS</td><td class="n">10</td>
+  <td>liquidez — acrual, beyond_cronograma, varcota</td>
+  <td>Taxas e indexadores para acrual e marcação.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_TB_CARTEIRA_UNIFICADA</td><td class="n">10</td>
+  <td>liquidez — queries, cli, beyond_cronograma, documentacao</td>
+  <td>Posição da carteira por ativo e data. Ponta ativa do relatório de liquidez.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_TB_ESTOQUE_UNIFICADO</td><td class="n">6</td>
+  <td>liquidez — queries, documentacao · <strong>estoque_credito</strong></td>
+  <td>Estoque de recebíveis por data de posição, com cedente, sacado, atraso e PDD.</td>
+</tr>
+<tr>
+  <td class="obj">TB_CURVA_JUROS_DIARIA</td><td class="n">6</td>
+  <td>liquidez — queries, fluxo</td>
+  <td>Curva de juros diária, usada na projeção de fluxo.</td>
+</tr>
+<tr>
+  <td class="obj">TB_PASSIVO_DISTRIBUIDORES</td><td class="n">4</td>
+  <td>liquidez — queries</td>
+  <td>De/para de distribuidores por documento.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_TB_COTAS_FUNDOS</td><td class="n">2</td>
+  <td>liquidez — varcota</td>
+  <td>Série de cotas por fundo e data.</td>
+</tr>
+<tr>
+  <td class="obj">HOD_MCT_REU_MOVIMENTACAO_PROCESSADA</td><td class="n">1</td>
+  <td>liquidez — queries</td>
+  <td>Movimentação processada (aplicações e resgates).</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h2>View</h2>
+
+<div class="rolagem">
+<table>
+<thead>
+<tr><th>Objeto</th><th class="n">Refs</th><th>Onde é usada</th><th>Observação</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td class="obj">VW_BI_LIQUIDEZ_PL</td><td class="n">2</td>
+  <td>liquidez — varcota</td>
+  <td>É <strong>view, não tabela</strong>. Depende das tabelas que a definem, então
+      precisa ser recriada <em>depois</em> das bases.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h2>Pontos de atenção</h2>
+
+<div class="etapa pendente">
+  <strong><code>TB_TAXAS</code> aparece com duas grafias</strong>
+  <p><code>TB_TAXAS</code> em <code>beyond_cronograma.py</code> e <code>varcota.py</code>,
+  e <code>TB_Taxas</code> em <code>acrual.py</code>. Funciona hoje porque o
+  <em>collation</em> do SQL Server é <em>case-insensitive</em>. Se produção vier com
+  collation sensível a maiúsculas, <code>acrual.py</code> quebra.</p>
+</div>
+
+<div class="etapa pendente">
+  <strong>O prefixo <code>HOD_</code> sugere carga de terceiro</strong>
+  <p>Pelo código não dá para saber se esses objetos são tabelas, views ou sinônimos
+  apontando para outra base. Se forem views ou sinônimos, a migração precisa levar a
+  origem também — senão o objeto existe e vem vazio. Não pude confirmar porque estou
+  sem acesso ao banco; a consulta que resolve é no <code>sys.objects</code> filtrando
+  por esses nomes.</p>
+</div>
+
+<footer>
+<p>Servidor <code>10.201.1.6,1433</code>, autenticação integrada do Windows, banco
+<code>riscogchml</code> desde 23/09/2026. O nome do banco vem da variável de ambiente
+<code>LIQUIDEZ_BANCO</code> em <code>liquidez/db.py</code>, então apontar para produção
+não exige mexer no código.</p>
+</footer>
+
+</div>
+</body>
+</html>

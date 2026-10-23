@@ -1,0 +1,43 @@
+# dados e saidas geradas (nunca versionar: contem carteira, operacoes e cotistas)
+bi/
+dados/
+saidas/
+relatorios/
+fluxos/
+fluxo/
+regulamentos/
+.cache/
+_tmp/
+*.parquet
+*.html
+*.xlsx
+*.xlsm
+*.xlsb
+*.log
+# credenciais e ambiente
+.env
+*.env
+Credenciais*
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# gerado por `python -m liquidez configurar` / `cotas sincronizar` / `cronograma beyond` (fica so no PC)
+config/fundos/
+config/calendario/
+config/cronograma/
+config/isin_cotas.csv
+config/prazos_ativos.csv
+config/regras_vencidos.json
+config/ativos_excluidos.json
+config/indicadores.json
+config/produtos.json
+# vindos do pacote do gestor por `importar-pacote` (dado por operacao, Termos de CRA, curvas B3)
+config/cra/
+config/curvas/
+config/custo_de_carrego.json
+config/planilhas/
+# os parametros da area SAO versionados
+!config/parametros/
+# documentacao do gestor (sem dado de carteira ou cotista)
+!docs/gestor/*.html

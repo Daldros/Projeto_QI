@@ -1,0 +1,5 @@
+{
+  "_comentario": "Ativos que saem da analise de liquidez: colunas C e G da aba Vencidos da planilha original, digitadas a mao. Lista do gestor (config/ativos_excluidos.json do pacote de 21/10/2026), que substitui a reconstrucao de 05/10/2026 (so LTNO/LFTO/NTN O para a QI). A chave casa por substring normalizada com o administrador da ficha; 'padrao' e a coluna C, que vale para todo administrador sem lista propria e so exclui com Qtde_Dias <= 0. A PLANNER usa a coluna G e exclui sem condicao de prazo. Chave 'PLANNER' (e nao a razao social inteira do gestor, 'PLANNER CORRETORA DE VALORES S.A.') para casar com qualquer grafia do cadastro.",
+  "padrao": ["PDD", "MEZAN", "LFTO", "PDCEX", "PDCCE", "SRP", "PDDNC", "LTNO", "PDCCB"],
+  "PLANNER": ["SRP", "MEZAN"]
+}

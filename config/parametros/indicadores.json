@@ -1,0 +1,16 @@
+{
+  "_comentario": "Parametros da area de risco. Valores recuperados do bi/ gerado pelo gestor (fato_indicadores e fato_anbima, jun-ago/2026) e de liquidez/painel.py:115-118. Mudanca aqui e decisao da area: registrar quem aprovou e quando.",
+  "limites": {
+    "cx_cotista": 0.15,
+    "cx_gdp": 0.15,
+    "cx_distribuidor": 1.0,
+    "caixa_resgate": 1.0
+  },
+  "fator_gdp": 2.33,
+  "anbima_horizontes_dias": [1, 2, 3, 4, 5, 10, 21, 42, 63],
+  "anbima_percentil_95": [0.0017, 0.0054, 0.0118, 0.0226, 0.0294, 0.0944, 0.1172, 0.1399, 0.1574],
+  "resgate": {
+    "_comentario": "tipo_movimentacao da HOD_MCT_REU_MOVIMENTACAO_PROCESSADA (05/10/2026: APLICACAO, RESGATE_TOTAL, RESGATE_PARCIAL)",
+    "tipos": ["RESGATE_TOTAL", "RESGATE_PARCIAL"]
+  }
+}

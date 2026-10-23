@@ -1,0 +1,13 @@
+pandas>=2.2
+pyodbc>=5.0
+openpyxl>=3.1
+pyarrow>=15.0
+# planilhas .xlsb dos cronogramas (liquidez/cronograma.py)
+pyxlsb>=1.0
+# feriados ANBIMA em .xls (liquidez/calendario.py)
+xlrd>=2.0
+# Leitura dos Termos de Securitizacao (`python -m liquidez.cra texto`). Python
+# puro de proposito: o renderizador de PDF do editor depende do poppler, que
+# nao esta instalado no Windows.
+pypdf>=5.0
+pytest>=8.0

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Processo do Relatório de Liquidez</title>
+<style>
+:root {
+  --fundo: #ffffff; --fundo2: #f6f7f9; --texto: #1b1d21; --suave: #5c6169;
+  --borda: #e2e5ea; --acento: #1f5fa9; --ok: #1a7f4b; --pendente: #a35c00;
+  --codigo-fundo: #f0f2f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #16181c; --fundo2: #1e2126; --texto: #e6e8ec; --suave: #9aa1ab;
+    --borda: #2e333b; --acento: #74a9e8; --ok: #4cc38a; --pendente: #e0a458;
+    --codigo-fundo: #23272e;
+  }
+}
+:root[data-theme="dark"] {
+  --fundo: #16181c; --fundo2: #1e2126; --texto: #e6e8ec; --suave: #9aa1ab;
+  --borda: #2e333b; --acento: #74a9e8; --ok: #4cc38a; --pendente: #e0a458;
+  --codigo-fundo: #23272e;
+}
+:root[data-theme="light"] {
+  --fundo: #ffffff; --fundo2: #f6f7f9; --texto: #1b1d21; --suave: #5c6169;
+  --borda: #e2e5ea; --acento: #1f5fa9; --ok: #1a7f4b; --pendente: #a35c00;
+  --codigo-fundo: #f0f2f5;
+}
+body {
+  background: var(--fundo); color: var(--texto); margin: 0;
+  font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.pagina { max-width: 60rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+h1 { font-size: 1.9rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+h2 { font-size: 1.3rem; margin: 3rem 0 1rem; padding-bottom: .4rem;
+     border-bottom: 2px solid var(--borda); }
+h3 { font-size: 1.05rem; margin: 0 0 .2rem; }
+p { margin: .6rem 0; }
+.sub { color: var(--suave); margin: 0 0 2rem; font-size: .95rem; }
+code { background: var(--codigo-fundo); padding: .1em .35em; border-radius: 4px;
+       font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .87em; }
+.cartoes { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+           margin: 1.5rem 0; }
+.cartao { background: var(--fundo2); border: 1px solid var(--borda); border-radius: 10px;
+          padding: .85rem 1rem; }
+.cartao .n { font-size: 1.5rem; font-weight: 650; letter-spacing: -.02em; }
+.cartao .r { color: var(--suave); font-size: .8rem; text-transform: uppercase;
+             letter-spacing: .04em; }
+.etapa { background: var(--fundo2); border: 1px solid var(--borda); border-left: 4px solid var(--acento);
+         border-radius: 10px; padding: 1.1rem 1.25rem; margin: 1rem 0; }
+.etapa.pendente { border-left-color: var(--pendente); }
+.cabeca { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.ordem { color: var(--suave); font-variant-numeric: tabular-nums; font-weight: 650; }
+.marca { font-size: .72rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em;
+         padding: .15rem .5rem; border-radius: 20px; border: 1px solid currentColor; }
+.marca.ok { color: var(--ok); }
+.marca.pendente { color: var(--pendente); }
+.origem { color: var(--suave); font-size: .85rem; margin: .1rem 0 .8rem; }
+.grade { display: grid; gap: .5rem 1.25rem; grid-template-columns: max-content 1fr;
+         margin: .8rem 0; font-size: .93rem; }
+.grade dt { color: var(--suave); }
+.grade dd { margin: 0; }
+ul { margin: .5rem 0; padding-left: 1.2rem; }
+li { margin: .25rem 0; }
+.nota { border-left: 3px solid var(--pendente); background: var(--fundo);
+        padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: .8rem 0 0; font-size: .93rem; }
+.rolagem { overflow-x: auto; margin: 1rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--borda);
+         vertical-align: top; }
+th { color: var(--suave); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+     font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rodape { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--borda);
+          color: var(--suave); font-size: .85rem; }
+</style>
+</head><body>
+<div class="wrap">
+
+<header class="capa">
+  <p class="eyebrow">Documentação técnica · projeto liquidez</p>
+  <h1>O processo do Relatório de Liquidez</h1>
+  <p class="dek">Mapa para quem assume ou mantém o código: as nove etapas da rodada, o papel
+  de cada módulo, os cadastros mantidos à mão, quem manda sobre quem, e onde as decisões
+  de modelagem estão escritas.</p>
+  <div class="meta">
+    <span><b>Pacote</b> · <code>liquidez</code>, 27 módulos</span>
+    <span><b>Entrada</b> · <code>python -m liquidez</code></span>
+    <span><b>Rodada</b> · <code>rodar_diario.ps1</code></span>
+  </div>
+</header>
+
+<section>
+<h2>Origem</h2>
+<h3>É a migração de uma macro, e os nomes do VBA sobrevivem no código</h3>
+<p>O relatório nasceu como <code>Relatório de Liquidez_Multiplica_V2.xlsm</code>, ainda na raiz
+do projeto. O pacote Python reproduz aquele processo, e os <em>docstrings</em> mantêm a
+referência de propósito: <code>tratamentos.py</code> declara-se equivalente ao módulo VBA
+<code>Org_dados</code>, <code>analise.py</code> à etapa <code>OrgCarteira</code>,
+<code>fluxo.py</code> ao insumo de <code>CalcDiasFluxos</code>, e <code>queries.py</code> traz
+“as seis consultas migradas do VBA”. Quando algo no código parecer arbitrário, a macro é a
+primeira fonte a consultar.</p>
+<p>A pergunta que o relatório responde é uma: <strong>quanto cada fundo converte em caixa
+dentro da própria janela de cotização</strong>. Todo o resto — prazos, fluxo, matriz por faixa,
+indicadores — existe para chegar nesse número.</p>
+</section>
+
+<section>
+<h2>Ambiente</h2>
+<h3>O que é preciso para rodar</h3>
+<p>Dependências em <code>requirements.txt</code>: <code>pandas</code>, <code>pyodbc</code>,
+<code>openpyxl</code>, <code>pyarrow</code> e <code>pypdf</code> — este último só para ler
+Termos de Securitização.</p>
+<p>O banco é um SQL Server em <code>10.201.1.6,1433</code>. O nome do catálogo está em
+<code>db.BANCO</code>, hoje <code>riscogchml</code>, e pode ser trocado pela variável de
+ambiente <code>LIQUIDEZ_BANCO</code> sem mexer no código — o banco foi renomeado de
+<code>riscogc</code> em 23/09/2026. A autenticação é integrada do Windows: <strong>não há
+credencial no repositório</strong>, o que significa que quem for rodar precisa de acesso de
+rede à instância e de permissão de leitura com a própria conta. O <code>db.py</code> escolhe o
+driver ODBC por ordem de preferência e aceita o legado “SQL Server”.</p>
+</section>
+
+<section>
+<h2>Pipeline</h2>
+<h3>As nove etapas da rodada diária</h3>
+<p>O <code>rodar_diario.ps1 -Data AAAA-MM-DD</code> executa tudo na ordem abaixo. Cada etapa
+também roda sozinha pelo CLI, o que é o caminho normal para depurar.</p>
+<div class='tw'><table><thead><tr><th>#</th><th>Etapa</th><th>Comando</th><th>Módulos</th><th>Entra</th><th>Sai</th></tr></thead><tbody><tr><td>1</td><td>Extração</td><td><code>extrair --data</code></td><td><code>extrator</code>, <code>queries</code>, <code>db</code></td><td>SQL Server <code>riscogchml</code></td><td><code>dados.novo/*.parquet</code> + <code>_carga.json</code></td></tr><tr><td>2</td><td>Conferência da carga</td><td>— (no <code>.ps1</code>)</td><td>—</td><td><code>_carga.json</code></td><td>aborta se a carga não presta</td></tr><tr><td>3</td><td>Troca da carga</td><td>— (no <code>.ps1</code>)</td><td>—</td><td><code>dados.novo</code></td><td><code>dados/</code>; a antiga vai para <code>dados.anterior</code></td></tr><tr><td>4</td><td>Prazos derivados da ficha</td><td><code>prazos sincronia</code></td><td><code>prazos</code>, <code>cadastro</code></td><td><code>config/fundos/*.json</code></td><td><code>config/prazos_ativos.csv</code> realinhado</td></tr><tr><td>5</td><td>Planilhas na pasta de entrada</td><td><code>cronograma sincronizar</code></td><td><code>cronograma</code></td><td><code>config/planilhas/*.xlsb</code></td><td><code>config/cronograma/&lt;cnpj&gt;.json</code></td></tr><tr><td>5b</td><td>Cronograma das NC/CCB do Beyond</td><td><code>cronograma beyond</code></td><td><code>beyond_cronograma</code></td><td><code>TB_LIQUIDEZ_OPERACOES_4</code></td><td><code>config/cronograma/beyond/&lt;cnpj&gt;.json</code></td></tr><tr><td>6</td><td>Projeção do fluxo futuro</td><td><code>fluxo --fatos</code></td><td><code>fluxo</code>, <code>acrual</code>, <code>calendario</code>, <code>bullets</code></td><td>cronograma + carteira + curva DI1</td><td><code>fluxo/&lt;data&gt;/*.csv</code> e <code>fato_fluxo</code></td></tr><tr><td>7</td><td>Relatórios por fundo em Excel</td><td><code>relatorio</code></td><td><code>tratamentos</code>, <code>analise</code>, <code>indicadores</code>, <code>relatorio_excel</code></td><td>carga + cadastros</td><td><code>relatorios/&lt;data&gt;/Liquidez_&lt;cnpj&gt;_&lt;data&gt;.xlsx</code></td></tr><tr><td>8</td><td>Camada de fatos</td><td><code>fatos gerar</code></td><td><code>fatos</code></td><td>carga + cadastros</td><td><code>bi/fato_*/data=&lt;data&gt;/dados.parquet</code></td></tr><tr><td>8b</td><td>Série de cotas, retorno e VaR</td><td><code>cotas serie --ate</code></td><td><code>varcota</code></td><td>cotas históricas + CDI</td><td><code>bi/serie_cota</code>, <code>bi/serie_cdi</code></td></tr><tr><td>9</td><td>Painel e páginas por fundo</td><td><code>painel</code></td><td><code>painel</code>, <code>relatorio_fundo</code></td><td>camada de fatos</td><td><code>bi/painel.html</code> e <code>bi/fundos/*.html</code></td></tr></tbody></table></div>
+<div class="nota">
+<p>A ordem não é arbitrária em dois pontos. A <strong>captura do Beyond (5b) vem antes do
+fluxo (6)</strong> para que a operação nova já entre projetada em parcelas em vez de cair na
+premissa bullet. E os <strong>relatórios (7) vêm antes da camada de fatos (8)</strong> de
+propósito: o <code>.xlsx</code> é o que se mostra no dia, então não espera pelo BI.</p>
+</div>
+</section>
+
+<section>
+<h2>Módulos</h2>
+<h3>Quem faz o quê</h3>
+<div class='tw'><table><thead><tr><th>Camada</th><th>Módulo</th><th>Responsabilidade</th></tr></thead><tbody><tr><td>Infraestrutura</td><td><code>db</code></td><td>conexão por thread, retry em queda de socket, timeouts</td></tr><tr><td></td><td><code>queries</code></td><td>as seis consultas migradas do VBA</td></tr><tr><td></td><td><code>calendario</code></td><td>dias úteis, a partir dos feriados da ANBIMA</td></tr><tr><td></td><td><code>cvm</code></td><td>cadastro de fundos e classes da CVM (pós-RCVM 175)</td></tr><tr><td>Cadastros</td><td><code>cadastro</code></td><td>a ficha por fundo; <code>pz_resg</code> e <code>cc</code> vivem aqui</td></tr><tr><td></td><td><code>prazos</code></td><td>prazo de liquidez por ativo; origem <code>cadastro</code> ou <code>fixo</code></td></tr><tr><td></td><td><code>cotas</code></td><td>de-para do código da carteira ao prazo de resgate da cota</td></tr><tr><td></td><td><code>cronograma</code></td><td>cronograma contratual lido do <code>.xlsb</code>, mais os manuais</td></tr><tr><td></td><td><code>beyond_cronograma</code></td><td>cronograma de NC/CCB deduzido do Beyond, por captura única</td></tr><tr><td></td><td><code>cra</code></td><td>lastro de CRA a partir do Termo de Securitização</td></tr><tr><td></td><td><code>regulamentos</code></td><td>baixa da CVM o regulamento vigente, uma pasta por fundo</td></tr><tr><td>Extração</td><td><code>extrator</code></td><td>lote paralelo por fundo, consolidação em parquet</td></tr><tr><td>Transformação</td><td><code>tratamentos</code></td><td>equivale ao módulo VBA <code>Org_dados</code></td></tr><tr><td></td><td><code>regras_adm</code></td><td>o que cada administrador exige de tratamento</td></tr><tr><td></td><td><code>regras_vencidos</code></td><td>como identificar ativo vencido, por administrador</td></tr><tr><td></td><td><code>acrual</code></td><td>separa principal de juros corridos (a carteira junta)</td></tr><tr><td>Projeção</td><td><code>fluxo</code></td><td>fluxo futuro pela taxa da operação e pela curva</td></tr><tr><td></td><td><code>bullets</code></td><td>operação sem cronograma projetada como bullet, e sua fila</td></tr><tr><td>Análise</td><td><code>analise</code></td><td>matriz produto × faixa de prazo (etapa VBA <code>OrgCarteira</code>)</td></tr><tr><td></td><td><code>indicadores</code></td><td>caixa potencial, caixa/PL, concentração</td></tr><tr><td></td><td><code>varcota</code></td><td>retorno, VaR paramétrico e Sharpe pela série de cotas</td></tr><tr><td>Saída</td><td><code>relatorio_excel</code></td><td>o <code>.xlsx</code> formatado, um por fundo</td></tr><tr><td></td><td><code>fatos</code></td><td>o histórico que o relatório não guarda, particionado por data</td></tr><tr><td></td><td><code>painel</code></td><td>painel diário em HTML autocontido</td></tr><tr><td></td><td><code>relatorio_fundo</code></td><td>a página por fundo, também autocontida</td></tr><tr><td></td><td><code>documentacao</code></td><td>gera <code>docs/tratamentos.html</code> a partir do código</td></tr><tr><td>Interface</td><td><code>cli</code></td><td>todos os subcomandos; é o ponto de entrada de tudo</td></tr></tbody></table></div>
+<p>O <code>cli.py</code> é o maior arquivo do pacote e concentra a orquestração: cada
+subcomando é uma função <code>cmd_*</code> que lê cadastros, chama os módulos de domínio e
+grava a saída. Para entender qualquer etapa, comece pela <code>cmd_*</code> correspondente.</p>
+</section>
+
+<section>
+<h2>Cadastros</h2>
+<h3>O que é mantido à mão, e o que é gerado</h3>
+<p>Esta é a parte que mais exige cuidado de quem assume: boa parte da inteligência do
+relatório não está no código, está nestes arquivos.</p>
+<div class='tw'><table><thead><tr><th>Arquivo</th><th>O que é</th><th>Observações</th></tr></thead><tbody><tr><td><code>config/fundos/&lt;cnpj&gt;.json</code></td><td>uma ficha por fundo</td><td><code>pz_resg</code> (resgate da cota) e <code>cc</code> (janela de cotização), além de codinome do Beyond e situação</td></tr><tr><td><code>config/prazos_ativos.csv</code></td><td>prazo por ativo</td><td>chave é o <code>codigo_ativo</code>; <code>origem_prazo</code> diz se veio da ficha (<code>cadastro</code>) ou foi digitado (<code>fixo</code>)</td></tr><tr><td><code>config/isin_cotas.csv</code></td><td>de-para de cota</td><td>ISIN ou código do administrador → CNPJ, condomínio e prazo</td></tr><tr><td><code>config/cronograma/&lt;cnpj&gt;.json</code></td><td>cronograma da planilha</td><td>reescrito pelo <code>cronograma importar</code>; não editar à mão</td></tr><tr><td><code>config/cronograma/manuais/*.json</code></td><td>cronograma digitado</td><td>para papel cujo layout a planilha não expõe, como CRA</td></tr><tr><td><code>config/cronograma/beyond/&lt;cnpj&gt;.json</code></td><td>cronograma capturado</td><td>pasta própria para o <code>importar</code> não apagar</td></tr><tr><td><code>config/regras_vencidos.json</code></td><td>regra por administrador</td><td>como marcar ativo vencido</td></tr><tr><td><code>config/ativos_excluidos.json</code></td><td>exclusões</td><td>linhas que não entram na exposição</td></tr><tr><td><code>config/indicadores.json</code>, <code>custo_de_carrego.json</code></td><td>parâmetros</td><td>limites e custos usados nos indicadores</td></tr></tbody></table></div>
+<p>A pasta <code>config/</code> guarda também backups com o padrão
+<code>*_antes_&lt;motivo&gt;.csv</code> — convenção adotada antes de cada alteração em massa
+de <code>prazos_ativos.csv</code> e <code>isin_cotas.csv</code>. Eles não são lidos por nada;
+servem para comparar e voltar atrás.</p>
+</section>
+
+<section>
+<h2>Precedência</h2>
+<h3>Quem manda quando duas fontes discordam</h3>
+<p>Três cascatas respondem por quase toda a dúvida de “de onde veio este número”.</p>
+<div class='tw'><table><thead><tr><th>Decisão</th><th>Ordem</th><th>Onde está no código</th></tr></thead><tbody><tr><td>Prazo de resgate de um fundo da casa</td><td>ficha (<code>pz_resg</code>) &gt; cadastro do riscogc</td><td><code>cotas.baixar</code> grava a ficha no de-para; <code>cotas.ResolvedorCotas.prazo</code> a usa em execução</td></tr><tr><td>Prazo de um ativo da carteira</td><td>tabela de prazos (estrito por <code>codigo_ativo</code>) &gt; de-para por ISIN/código &gt; ficha &gt; cadastro do banco</td><td><code>prazos.prazo_por_ativo</code> e <code>cotas.py</code></td></tr><tr><td>Cronograma de uma operação</td><td>planilha &gt; manual &gt; Beyond &gt; bullet</td><td><code>cronograma.Cronograma.carregar</code> monta na ordem; a coluna <code>origem</code> registra de onde veio</td></tr></tbody></table></div>
+<div class="nota">
+<p><strong>As duas colunas que mais confundem</strong> são <code>pz_resg</code> e
+<code>cc</code>, ambas na ficha do fundo. O <code>pz_resg</code> é o prazo de resgate das
+cotas <em>daquele</em> fundo, e serve quando <em>outro</em> fundo o detém — alimenta a tabela
+de prazos e o de-para de cotas. O <code>cc</code> é a <strong>janela de cotização do próprio
+fundo</strong>: é ele que vira <code>prazo_cotizacao</code> e define as faixas
+<code>0, 1, …, cc, &gt;cc</code> da matriz em <code>analise.py</code>. Coincidem na maioria
+dos fundos, mas não automaticamente.</p>
+</div>
+</section>
+
+<section>
+<h2>Guardas</h2>
+<h3>A rodada falha de propósito, e o código de saída diz por quê</h3>
+<p>A extração escreve em <code>&lt;Dados&gt;.novo</code> e só substitui a carga boa depois de
+conferida, porque uma rodada em dia sem dado apagaria a anterior. A carga substituída fica em
+<code>&lt;Dados&gt;.anterior</code>.</p>
+<div class='tw'><table><thead><tr><th class=num>Código</th><th>Classe</th><th>Significado</th></tr></thead><tbody><tr><td class=num>0</td><td>OK</td><td>relatórios gerados</td></tr><tr><td class=num>2</td><td>falha</td><td>a extração falhou; a carga anterior foi preservada</td></tr><tr><td class=num>3</td><td>falha</td><td>carga inválida: sem manifesto, data errada, com erros, ou uma base vazia e a outra cheia</td></tr><tr><td class=num>4</td><td>sem dado</td><td>feriado ou posição ainda não publicada</td></tr><tr><td class=num>5</td><td>erro</td><td>algum fundo falhou na geração do <code>.xlsx</code></td></tr><tr><td class=num>6</td><td>erro</td><td>a projeção do fluxo falhou</td></tr><tr><td class=num>7</td><td>pendência</td><td>há operação bullet nova a conferir</td></tr><tr><td class=num>8</td><td>pendência</td><td>sobrou arquivo na pasta de entrada sem CNPJ no nome</td></tr><tr><td class=num>9</td><td>erro</td><td>a camada de fatos falhou</td></tr><tr><td class=num>10</td><td>erro</td><td>o painel falhou</td></tr><tr><td class=num>11</td><td>pendência</td><td>NC/CCB não casou com o Beyond e seguiu como bullet</td></tr></tbody></table></div>
+<p>Códigos 7, 8 e 11 são <strong>pendência, não falha</strong>: os relatórios saíram, e há algo
+para uma pessoa conferir. Quem monitorar a rodada por código de saída precisa tratá-los
+diferente dos erros.</p>
+</section>
+
+<section>
+<h2>Armadilhas</h2>
+<h3>O que já custou tempo</h3>
+<div class='tw'><table><thead><tr><th>Armadilha</th><th>Por quê</th></tr></thead><tbody><tr><td><code>cc</code> vazio ou zerado derruba o fundo</td><td>o validador trata <code>cc</code> como aviso, mas sem ele a geração do <code>.xlsx</code> levanta exceção; e <code>cc = 0</code> reduz a janela a uma faixa, fazendo o fundo parecer sem liquidez</td></tr><tr><td>A tabela do Beyond é semanal</td><td>a <code>TB_LIQUIDEZ_OPERACOES_4</code> carrega às quintas e no fechamento; consultar pela data da posição devolve vazio quase sempre. Use <code>beyond_cronograma.snapshot_atual()</code></td></tr><tr><td>Extração parcial já passou pela guarda</td><td>em 11/08/2026 a carteira veio cheia e o <code>bd</code> vazio; a guarda exigia as duas vazias e deixou passar. Hoje qualquer uma vazia aborta</td></tr><tr><td>Código do administrador não é identificador de ativo</td><td>na ECOAGRO, <code>15804</code>, <code>15805</code> e <code>16007</code> são categoria e cobrem vários ativos; cadastrar prazo por eles dá um prazo só a papéis diferentes</td></tr><tr><td>O <code>cnpj</code> da tabela de prazos é procedência</td><td>ele diz de qual ficha o prazo veio; usá-lo como de-para de look-through fabrica exposição falsa</td></tr></tbody></table></div>
+</section>
+
+<section>
+<h2>Decisões</h2>
+<h3>Onde o raciocínio está escrito</h3>
+<p>O código é comentado com decisões datadas, e é mais confiável que qualquer resumo — este
+documento inclusive. Ao mexer em qualquer destes pontos, leia o comentário antes:</p>
+<div class='tw'><table><thead><tr><th>Arquivo</th><th>O que os comentários explicam</th></tr></thead><tbody><tr><td><code>analise.py</code></td><td>por que o Valor Líquido do DC sai do fluxo projetado, e em que moeda se mede a parcela que cabe na janela</td></tr><tr><td><code>fluxo.py</code></td><td>o valor de partida é o <code>Valor_Liquido</code> da carteira; como os pesos de amortização são normalizados</td></tr><tr><td><code>beyond_cronograma.py</code></td><td>a chave do casamento, a decomposição da taxa, a cadência da tabela e a captura única</td></tr><tr><td><code>cotas.py</code></td><td>a cascata de resolução do prazo, e por que o condomínio decide antes do texto de liquidação</td></tr><tr><td><code>varcota.py</code></td><td>por que as variantes <code>_GER</code> e <code>_IND</code> do <code>idFundo</code> exigem o de-para pelo CNPJ</td></tr><tr><td><code>acrual.py</code></td><td>o que a carteira junta e precisa ser separado antes de projetar</td></tr><tr><td><code>regras_adm.py</code>, <code>regras_vencidos.py</code></td><td>o que cada administrador faz de diferente</td></tr></tbody></table></div>
+<p>Há ainda dois documentos gerados nesta mesma pasta:
+<a href="tratamentos.html">tratamentos.html</a>, que detalha as nove etapas de transformação
+dos dados e é produzido pelo <code>documentacao.py</code> a partir do próprio código, e
+<a href="tabelas_do_banco.html">tabelas_do_banco.html</a>, com as tabelas de origem. O
+<code>README.md</code> na raiz cobre a operação comando a comando.</p>
+</section>
+
+<footer>
+  <p>Documentação do processo mantida à mão. O detalhe das transformações está em
+  <a href="tratamentos.html">tratamentos.html</a>, gerado a partir do código; quando os dois
+  divergirem, o código e aquele documento valem mais que este.</p>
+</footer>
+
+</div></body></html>

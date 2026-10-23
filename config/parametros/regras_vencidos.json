@@ -1,0 +1,42 @@
+{
+  "_comentario": "Regras de identificacao de ativo vencido na carteira, por administrador (chave casa por substring normalizada com o administrador da ficha). Reconstruidas de liquidez/regras_adm.py (QI: 'coluna I comeca com VC e coluna Q > 0'; PLANNER: 'VENC' no codigo). Colunas I e Q da HOD_TB_CARTEIRA_UNIFICADA = Codigo_Ativo e Qtd_Total (posicoes 9 e 17, confirmadas em 05/10/2026). `alternativas` sao grupos de condicoes que valem por OU com as principais; o prefixo VC so marca o que o administrador ja reclassificou, e a data de vencimento no passado (operador data_anterior_a) pega o que venceu e ainda nao foi reclassificado -- dsStatus veio vazio na MUL_GLD_CARTEIRA_UNIFICADA em 13/10/2026, entao nao ha status para usar.",
+  "QI CORRETORA": {
+    "descricao": "Ativos cujo codigo comeca com VC e com quantidade positiva (antiga SINGULARE), ou com data de vencimento anterior a da posicao.",
+    "coluna_emissor": "Emissor",
+    "condicoes": [
+      {"coluna": "Codigo_Ativo", "operador": "comeca_com", "valor": "VC"},
+      {"coluna": "Qtd_Total", "operador": "maior_que", "valor": 0}
+    ],
+    "alternativas": [
+      [{"coluna": "Data_Vencimento", "operador": "data_anterior_a", "valor": "Data_Posicao"}]
+    ]
+  },
+  "SINGULARE": {
+    "descricao": "Alias historico da QI CORRETORA: mesma regra.",
+    "coluna_emissor": "Emissor",
+    "condicoes": [
+      {"coluna": "Codigo_Ativo", "operador": "comeca_com", "valor": "VC"},
+      {"coluna": "Qtd_Total", "operador": "maior_que", "valor": 0}
+    ],
+    "alternativas": [
+      [{"coluna": "Data_Vencimento", "operador": "data_anterior_a", "valor": "Data_Posicao"}]
+    ]
+  },
+  "PLANNER": {
+    "descricao": "Ativos com VENC no codigo.",
+    "coluna_emissor": "Emissor",
+    "condicoes": [
+      {"coluna": "Codigo_Ativo", "operador": "contem", "valor": "VENC"}
+    ]
+  },
+  "_estoque": {
+    "descricao": "No estoque unificado, o status diz se o recebivel esta vencido (valores em 05/10/2026: 'A vencer', 'Vencido'). Singular e plural aceitos, como no pacote do gestor de 21/10/2026, para nao quebrar se a origem variar.",
+    "coluna_sacado": "CNPJ_Sacado",
+    "condicoes": [
+      {"coluna": "Status_Recebivel", "operador": "em", "valor": ["VENCIDO", "VENCIDOS"]}
+    ]
+  },
+  "_pendentes": {
+    "administradores": ["VORTX", "BTG", "GENIAL", "CAIXA", "DAYCOVAL", "QI TECH"]
+  }
+}

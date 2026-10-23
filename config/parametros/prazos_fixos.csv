@@ -1,0 +1,5 @@
+codigo_op;codigo_ativo;cnpj;prazo;origem_prazo;observacao
+;Saldo Tesouraria;;0;fixo;caixa: liquidez imediata
+;SINGULARE-DI;;0;fixo;fundo DI da administradora: D+0
+;CPR;;999;fixo;sem prazo de resgate (decisao da area, liquidez/prazos.py)
+;IMOVE;;999;fixo;imovel (garantia/dacao) sob Renda Fixa: sem liquidez, fica no PL (decisao 05/10/2026)
