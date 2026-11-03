@@ -961,3 +961,42 @@ Me devolva a saída literal dos passos 1, 3, 6, 7, 8 e 12 e, SEM resumir:
 NÃO rode os scripts da raiz (analise_passivo, grafo_passivo, passivo_gestor):
 o HTML deles traz CPF e nome de cotista. NÃO envie .html, .xlsx nem bi\.
 ```
+
+## Rodada 25 (03/11/2026) — o bi_estresse unificado em PDF
+
+`ferramentas/bi_para_pdf.py` transforma o HTML unificado de liquidez e estresse
+(`bi_estresse_*.html`, um ou mais fundos) num PDF: capa com a tabela-resumo e,
+por fundo, painel, quem investe e análise de resgate, com marcadores por fundo e
+seção. Impresso direto do navegador o HTML sai cortado (cada iframe na altura da
+tela, só o primeiro fundo). O script usa o Edge/Chrome da máquina em modo
+headless e o `pypdf` do requirements: nada a instalar, nada acessa o banco. O
+PDF traz os dados do fundo: não versione nem envie.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/bi-para-pdf e gere o PDF do
+bi_estresse. Nenhum passo acessa o banco nem altera código; o único commit
+permitido é o merge do passo 3. Rode no cmd, um passo de cada vez, sem
+encadear com &&. Qualquer falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. git merge --no-ff origin/claude/bi-para-pdf   (conflito = PARE)
+4. .venv\Scripts\python -m pytest -q          (esperado: 103 passed)
+5. git push origin main
+6. dir /b /s /o-d C:\Users\mateus.castagnet\liquidez_bi\bi_estresse_*.html
+   (se não achar nada: dir /b /s /o-d C:\Users\mateus.castagnet\bi_estresse_*.html)
+   Use o caminho da primeira linha (o mais recente) no passo 7.
+7. .venv\Scripts\python ferramentas\bi_para_pdf.py "<caminho do passo 6>"
+   (grava o .pdf ao lado do .html, com o mesmo nome; para outro lugar, some
+    --saida "C:\...\arquivo.pdf". Se disser que não achou o Edge nem o Chrome,
+    repita com --navegador "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+8. Abra o PDF e confira: capa com a tabela dos fundos, depois painel, quem
+   investe e resgate de cada fundo, sem cartão cortado ao meio.
+
+Me devolva a saída literal dos passos 1, 4, 5, 6 e 7 (o passo 7 só lista
+fundo, seção e número de páginas). NÃO envie o PDF nem o HTML: trazem dados
+do fundo.
+```

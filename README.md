@@ -72,6 +72,7 @@ Rotina: `rodar_diario.ps1 -Data AAAA-MM-DD` (um dia) e `rodar_periodo.ps1`
 | `liquidez/` | pacote: extração, tratamento, fluxo, matriz, indicadores, VaR/Sharpe, fatos, painel e relatórios |
 | `analise_passivo.py`, `grafo_fundo.py`, `grafo_passivo.py`, `passivo_gestor.py` | concentração e rede do passivo (rodam à mão) |
 | `rodar_diario.ps1`, `rodar_periodo.ps1` | rotina |
+| `ferramentas/bi_para_pdf.py` | o `bi_estresse_*.html` unificado em PDF (Edge/Chrome headless, sem banco) |
 | `docs/` | diagnóstico e decisões |
 | `tests/` | testes sem banco (CI no GitHub) |
 
