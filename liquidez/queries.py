@@ -104,16 +104,18 @@ def db_ativo(cnpj: str, data: dt.date | str) -> Consulta:
 # TB_PASSIVO_DISTRIBUIDORES (riscogc) quebraria sem ele.
 #
 # `PASSIVO_NOTAS` tem um `?` (a data) e entra no FROM como `p`, com as colunas
-# que a HOD dava: dataPosicao, cdClasseAdm, nome, doc, doc_digitos, vlCorrigido.
+# que a HOD dava: dataPosicao, cdClasseAdm, nome, doc, doc_digitos, vlCorrigido,
+# mais `administrador` (SINGULARE/PLANNER), que a base de comissoes precisa.
 PASSIVO_ADMINISTRADORES = ("SINGULARE", "PLANNER")
 
 PASSIVO_NOTAS = (
-    "(SELECT x.dataPosicao, x.cdClasseAdm, x.nome, x.doc, x.doc_digitos, x.vlCorrigido"
+    "(SELECT x.dataPosicao, x.cdClasseAdm, x.nome, x.doc, x.doc_digitos, x.vlCorrigido,"
+    " x.administrador"
     " FROM (SELECT m.dtReferencia AS dataPosicao,"
     " CONVERT(VARCHAR(50), LTRIM(RTRIM(m.cdFundo))) AS cdClasseAdm,"
     " m.dsNomeCotista AS nome, m.docCotista AS doc,"
     " REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(m.docCotista)), '.', ''), '/', ''), '-', '') AS doc_digitos,"
-    " m.vlCorrigido,"
+    " m.vlCorrigido, UPPER(LTRIM(RTRIM(m.dsAdministrador))) AS administrador,"
     " ROW_NUMBER() OVER (PARTITION BY m.dtReferencia, LTRIM(RTRIM(m.cdFundo)),"
     " LTRIM(RTRIM(m.cdCotista)), LTRIM(RTRIM(m.nrNota))"
     " ORDER BY m.dhAlteracao DESC, m.id DESC) AS rn"

@@ -961,3 +961,48 @@ Me devolva a saída literal dos passos 1, 3, 6, 7, 8 e 12 e, SEM resumir:
 NÃO rode os scripts da raiz (analise_passivo, grafo_passivo, passivo_gestor):
 o HTML deles traz CPF e nome de cotista. NÃO envie .html, .xlsx nem bi\.
 ```
+
+## Rodada 25 (03/11/2026) — base de passivo de outubro/2026 para a apuração de comissões
+
+Pedido do RI (e-mail de 03/11/2026): base de passivo SINGULARE e PLANNER com as
+posições diárias do mês para 21 classes. O script novo `passivo_comissoes.py`
+usa a mesma fonte e as mesmas regras do grafo do passivo
+(`MUL_GLD_PASSIVO_CONSOLIDADO`, uma linha por nota) e lê a lista de
+`config/parametros/comissoes_fundos.csv`. Grava a planilha em `saidas\`
+(fora do git, com CPF/CNPJ de cotista). A tela mostra só fundo, classe, datas
+e totais, e é isso que volta. Tudo é SELECT.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código nem o CSV de fundos; o único commit permitido é o merge do passo 4.
+Rode no cmd, caminho absoluto na redireção, um passo de cada vez, sem
+encadear com &&. Qualquer falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. dir .venv\Scripts\python.exe
+   (se não existir: python -m venv .venv e depois
+    .venv\Scripts\pip install -r requirements.txt)
+4. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+5. git log --oneline -4 | findstr /C:"comissoes"   (precisa mostrar 1 linha)
+6. .venv\Scripts\python -m pytest -q          (esperado: 106 passed)
+7. git push origin main
+8. .venv\Scripts\python -m liquidez atualidade > C:\Users\mateus.castagnet\mapa_banco\liq25_atualidade.txt 2>&1
+   (a linha "passivo (datalake)" tem de mostrar data >= 2026-10-30; se for
+    anterior ou "falhou", PARE)
+9. .venv\Scripts\python passivo_comissoes.py --mes 2026-10 > C:\Users\mateus.castagnet\mapa_banco\liq25_comissoes.txt 2>&1
+   (leva alguns minutos: uma consulta por data do mês)
+10. dir saidas\passivo_comissoes_2026-10.xlsx
+
+Me devolva a saída literal dos passos 1, 3, 5, 6, 7 e 10 e, SEM resumir,
+liq25_atualidade e liq25_comissoes inteiros (só fundo, classe, datas e totais;
+sem cotista). Se alguma classe sair "FUNDO NAO ENCONTRADO", "CLASSE NAO
+ENCONTRADA" ou "FUNDO AMBIGUO", NÃO edite o CSV: só devolva a saída, a linha
+"classes/fundos existentes" diz o nome que o cadastro usa.
+NÃO abra, cole nem envie o .xlsx (traz CPF/CNPJ e nome de cotista): ele fica
+em saidas\ para a área pegar direto na máquina.
+```
