@@ -120,3 +120,50 @@ def test_captura_usa_a_leitura_do_fundo(monkeypatch, capsys, tmp_path):
                    "--leitura", "fundo", "--saida", str(tmp_path)])
     assert rc == 2 and usadas == [dt.date(2026, 9, 24)]
     assert "leitura 2026-09-24" in capsys.readouterr().out
+
+
+def test_escada_de_uma_data_passada(tmp_path, monkeypatch, capsys):
+    from liquidez import fatos as ft
+    from liquidez.fluxo import COL_VENCIDO_FLUXO
+
+    cnpj, data = AMADEUS.cnpj, "2026-09-30"
+
+    def linha(tabela, produto, faixa, valor, total=False):
+        dias = pd.to_numeric(pd.Series([faixa]), errors="coerce").iloc[0]
+        return {"data_posicao": data, "cnpj_fundo": cnpj, "nome_fundo": "AMADEUS FIDC",
+                "tabela": tabela, "faixa_prazo": str(faixa), "produto": produto,
+                "valor": valor, "dias_prazo": dias, "e_total": total}
+
+    matriz = pd.DataFrame([
+        linha("carteira", "DC", 5, 100.0), linha("carteira", "DC", ">29", 900.0),
+        linha("carteira", "Outros Fundos", 3, 50.0),
+        linha("estoque", "A Vencer C/ Carrego", 10, 30.0),
+        linha("estoque", "A Vencer C/ Carrego", "Exposição", 30.0),
+        linha("estoque", "Vencidos C/ Carrego", "Exposição", 7.0),
+    ])
+    fluxo = pd.DataFrame({"cnpj_fundo": [cnpj] * 2, "codigo_op": ["C1", "C1"],
+                          "dt_vencimento": ["2026-10-10", "2026-12-10"], "qt_dias": [10, 71],
+                          "vl_amortizacao": [400.0, 600.0], "vl_acrual": [5.0, 0.0],
+                          "vl_parcela": [420.0, 640.0], COL_VENCIDO_FLUXO: [False, False]})
+    ind = pd.DataFrame({"cnpj_fundo": [cnpj], "prazo_cotizacao": [29]})
+    for nome, df in (("fato_matriz", matriz), ("fato_fluxo", fluxo), ("fato_indicadores", ind)):
+        ft.gravar_tabela(df, nome, data, tmp_path)
+
+    monkeypatch.setattr(cli, "Cadastro", _Cadastro)
+    rc = cli.main(["escada", "--fundo", "AMADEUS FIDC", "--data", data, "--destino", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    # DC sai da matriz e vem do fluxo (405 em 8-15 dias, 600 em 60-89); estoque 30 em 8-15
+    assert "8–15 dias" in out and "435.00" in out and "600.00" in out
+    assert "cotas de fundo" in out and "50.00" in out
+    import re
+    assert re.search(r"vencidos\s+7\.00", out)
+    assert re.search(r"estoque A Vencer C/ Carrego\s+1\s+30\.00", out)   # sem a linha de soma
+    assert "produto trocado pelo fluxo: DC" in out
+
+
+def test_escada_sem_particao(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "Cadastro", _Cadastro)
+    rc = cli.main(["escada", "--fundo", "AMADEUS FIDC", "--data", "2026-09-30",
+                   "--destino", str(tmp_path)])
+    assert rc == 1 and "rode `fatos gerar`" in capsys.readouterr().out

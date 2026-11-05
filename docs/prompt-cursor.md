@@ -1049,3 +1049,53 @@ famílias, contagens e valores; sem sacado nem cedente).
 NÃO rode `cronograma beyond` sem --inventario, nem fluxo, fatos ou relatorio:
 isso fica para a próxima rodada, depois de conferirmos o nome e a leitura.
 ```
+
+## Rodada 27 (05/11/2026) — AMADEUS em 30/09/2026: captura do DC pela leitura do fundo e escada da data
+
+A rodada 26 confirmou: o Beyond grava o fundo como `Amadeus` (o codinome do
+cadastro está certo) e tem leitura em 30/09/2026 (NC/CCB A Vencer: 3 operações,
+R$ 73,43 mi; CLEAN e ANCORA: R$ 16,68 mi). A carteira de 30/09 traz as NC em
+"Renda Fixa" (12 linhas, R$ 73,57 mi, 4 NC/CCB com custo), que o de-para de
+`produtos.json` troca para DC. O estoque de 30/09 existe (1.200 recebíveis A
+vencer, R$ 94,98 mi; 1 vencido, R$ 1,3 mil). Sem `--leitura fundo` a captura
+usaria a leitura de 28/10, que já não tem as parcelas que venceram entre 30/09 e
+28/10. A carga vai para uma pasta própria (`dados\amadeus_2026-09-30`) para não
+substituir a carga do lote. O comando novo `escada` imprime a escada da data
+pedida (o painel e o relatório por fundo mostram sempre a data mais recente de
+`bi\`). Grava só arquivos locais fora do git: a carga, o cronograma capturado em
+`config\cronograma\beyond\` e as partições de 30/09 em `bi\` (só as linhas do
+AMADEUS; os outros fundos da data ficam como estão).
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 3. Rode no cmd, caminho
+absoluto na redireção, um passo de cada vez, sem encadear com &&. Qualquer
+falha, PARE e devolva a saída inteira (exceção: o passo 9 pode terminar com
+código 2, que só quer dizer "sobrou operação na fila"; siga).
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+4. git log --oneline -4 | findstr /C:"escada"   (precisa mostrar 1 linha)
+5. .venv\Scripts\python -m pytest -q          (esperado: 112 passed)
+6. git push origin main
+7. .venv\Scripts\python -m liquidez extrair --data 2026-09-30 --fundo "AMADEUS FIDC" --salvar --saida dados\amadeus_2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\liq27_extrair.txt 2>&1
+8. .venv\Scripts\python -m liquidez tratar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --salvar > C:\Users\mateus.castagnet\mapa_banco\liq27_tratar.txt 2>&1
+9. .venv\Scripts\python -m liquidez cronograma beyond --fundo "AMADEUS FIDC" --data 2026-09-30 --leitura fundo --saida dados\amadeus_2026-09-30 --detalhar > C:\Users\mateus.castagnet\mapa_banco\liq27_beyond.txt 2>&1
+10. .venv\Scripts\python -m liquidez cronograma validar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --detalhar > C:\Users\mateus.castagnet\mapa_banco\liq27_validar.txt 2>&1
+11. .venv\Scripts\python -m liquidez fluxo --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --data 2026-09-30 --acrual --fatos --detalhar > C:\Users\mateus.castagnet\mapa_banco\liq27_fluxo.txt 2>&1
+12. .venv\Scripts\python -m liquidez fatos gerar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --verboso > C:\Users\mateus.castagnet\mapa_banco\liq27_fatos.txt 2>&1
+13. .venv\Scripts\python -m liquidez escada --fundo "AMADEUS FIDC" --data 2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\liq27_escada.txt 2>&1
+14. git status --short           (precisa continuar vazio: tudo o que foi gravado é ignorado pelo git)
+
+Me devolva a saída literal dos passos 1, 4, 5, 6 e 14 e, SEM resumir:
+- liq27_extrair, liq27_beyond, liq27_validar, liq27_fluxo, liq27_fatos e
+  liq27_escada inteiros;
+- do liq27_tratar, da linha "Fundo ....." até a linha "ANBIMA enquadrado
+  ate" (inclusive). NÃO cole a "Tabela vencidos" (CPF e nome de sacado PF).
+NÃO rode painel nem relatorio, e NÃO envie arquivos de dados\, bi\ ou config\.
+```
