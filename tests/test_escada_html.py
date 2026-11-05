@@ -104,16 +104,16 @@ def test_escada_faixas_vencidos_e_conciliacao(ambiente):
     tmp, vistos = ambiente
     e = eh.calcular(None, FUNDO, tmp, DATA, 21, 90, (7, 15, 30, 60, 90), tmp / "bi")
     assert vistos == [21, 29]                                    # H e, ao lado, o cc
-    assert e.rotulos() == ["0–7", "8–15", "16–30", "31–60", "61–90", ">90"]
+    assert e.rotulos() == ["0–7 d", "8–15 d", "16–30 d", "31–60 d", "61–90 d", "> 90 d"]
     t = e.por_faixa(e.entradas, "categoria")
-    assert t.loc[eh.CAT_DC, "16–30"] == 100.0 and t.loc[eh.CAT_DC, "61–90"] == 300.0
-    assert t.loc[eh.CAT_DC, ">90"] == 600.0
-    assert t.loc[eh.CAT_DC_SEM_FLUXO, "31–60"] == 50.0            # C999999, 40 dias
-    assert t.loc[eh.CAT_CAIXA, "0–7"] == pytest.approx(-26.0)    # CPR + tesouraria no dia 0
-    assert t.loc[eh.CAT_OUTROS, "0–7"] == 2.0
-    assert t.loc[eh.CAT_COTAS, "16–30"] == 80.0 and t.loc[eh.CAT_COTAS, "0–7"] == 14.0
-    assert t.loc[eh.CAT_ESTOQUE, "0–7"] == 10.0 and t.loc[eh.CAT_ESTOQUE, "31–60"] == 2.0
-    assert t.loc[eh.CAT_ESTOQUE, ">90"] == 1.0
+    assert t.loc[eh.CAT_DC, "16–30 d"] == 100.0 and t.loc[eh.CAT_DC, "61–90 d"] == 300.0
+    assert t.loc[eh.CAT_DC, "> 90 d"] == 600.0
+    assert t.loc[eh.CAT_DC_SEM_FLUXO, "31–60 d"] == 50.0            # C999999, 40 dias
+    assert t.loc[eh.CAT_CAIXA, "0–7 d"] == pytest.approx(-26.0)    # CPR + tesouraria no dia 0
+    assert t.loc[eh.CAT_OUTROS, "0–7 d"] == 2.0
+    assert t.loc[eh.CAT_COTAS, "16–30 d"] == 80.0 and t.loc[eh.CAT_COTAS, "0–7 d"] == 14.0
+    assert t.loc[eh.CAT_ESTOQUE, "0–7 d"] == 10.0 and t.loc[eh.CAT_ESTOQUE, "31–60 d"] == 2.0
+    assert t.loc[eh.CAT_ESTOQUE, "> 90 d"] == 1.0
     v = e.vencidos.groupby("componente")["valor"].sum()
     assert v[eh.V_CARTEIRA] == 70.0 and v[eh.V_ESTOQUE] == 1.0 and v[eh.V_CARREGO] == 160.0
     assert e.fora["DC COMPENSADO (pares que se anulam)"] == pytest.approx(-0.01)
@@ -129,9 +129,37 @@ def test_html_sem_cotista_e_com_as_faixas(ambiente):
                           tmp / "escada.html")
     pagina = caminho.read_text(encoding="utf-8")
     assert pagina.startswith("<!doctype html>") and "<title>Escada de liquidez · AMADEUS FIDC</title>" in pagina
-    for rot in ("0–7 d", "8–15 d", "16–30 d", "31–60 d", "61–90 d", "&gt;90 d", "Vencidos"):
+    for rot in ("até 7 d", "até 15 d", "até 30 d", "até 60 d", "até 90 d", "&gt; 90 d", "Vencidos"):
         assert rot in pagina
     assert "H = D+21" in pagina and "Caixa Potencial em D+21" in pagina and "D+29" in pagina
     assert "prefers-color-scheme: dark" in pagina
     texto = eh.resumo_texto(e)
     assert "VENCIDOS (fora da escada)" in texto and "Diferenca R$ 0,00" in texto
+
+
+def test_escada_padrao_da_area_acumulada(ambiente):
+    """Imediata, ate 15/30/60/90/180/360 e acima de 360 (05/11/2026)."""
+    tmp, _ = ambiente
+    e = eh.calcular(None, FUNDO, tmp, DATA, 21, destino_bi=tmp / "bi")
+    assert e.cortes == (0, 15, 30, 60, 90, 180, 360) and e.limite == 360
+    assert e.rotulos() == ["Imediata", "1–15 d", "16–30 d", "31–60 d", "61–90 d", "91–180 d",
+                           "181–360 d", "> 360 d"]
+    tab = e.por_faixa(e.entradas, "categoria")
+    v = float(e.vencidos["valor"].sum())
+    ate = eh.escada_ate(e, tab, v).set_index("Prazo")
+    assert list(ate.index) == ["Liquidez imediata", "Até 15 dias", "Até 30 dias", "Até 60 dias",
+                               "Até 90 dias", "Até 180 dias", "Até 360 dias", "Acima de 360 dias",
+                               "Vencidos"]
+    # imediata: CPR+tesouraria (-26), LFT D+0 (2), QI CASH D+0 (14); o estoque de 5 dias fica em ate 15
+    assert ate.loc["Liquidez imediata", "Valor"] == pytest.approx(-10.0)
+    assert ate.loc["Até 15 dias", "Valor"] == pytest.approx(0.0)
+    assert ate.loc["Até 15 dias", "Dos quais direitos creditórios"] == pytest.approx(10.0)
+    # ate 30: + DC 100 (26 d) + GAD 80 (29 d)
+    assert ate.loc["Até 30 dias", "Valor"] == pytest.approx(180.0)
+    # ate 360 acumula tudo com prazo; acima de 360 e so o resto (nada aqui)
+    assert ate.loc["Até 360 dias", "Valor"] == pytest.approx(float(tab.drop(columns="sem prazo").sum().sum()))
+    assert ate.loc["Acima de 360 dias", "Valor"] == 0.0
+    assert ate.loc["Vencidos", "Valor"] == pytest.approx(231.0)
+    pagina = eh.montar_html(e)
+    for rot in ("Liquidez imediata", "Até 15 dias", "Acima de 360 dias", "Dos quais direitos creditórios"):
+        assert rot in pagina

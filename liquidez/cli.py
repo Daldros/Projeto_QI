@@ -3065,9 +3065,9 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--data", required=True, help="data de posicao AAAA-MM-DD")
     p.add_argument("--saida", default=str(SAIDA_PADRAO), help="pasta da carga extraida")
     p.add_argument("--horizonte", type=int, required=True, help="H: prazo de resgate em dias (ex.: 21)")
-    p.add_argument("--limite", type=int, default=90, help="ate quantos dias a escada abre (padrao 90)")
-    p.add_argument("--faixas", default="7,15,30,60,90",
-                   help="fim de cada faixa, em dias (padrao 7,15,30,60,90)")
+    p.add_argument("--limite", type=int, default=360, help="ate quantos dias a escada abre (padrao 360)")
+    p.add_argument("--faixas", default="0,15,30,60,90,180,360",
+                   help="fim de cada faixa, em dias; 0 = liquidez imediata (padrao 0,15,30,60,90,180,360)")
     p.add_argument("--destino-bi", dest="destino_bi", default="bi", help="camada de fatos (fluxo)")
     p.add_argument("--html", help="caminho do HTML (padrao: relatorios/escada_<cnpj>_<data>_H<h>_<limite>d.html)")
     p.set_defaults(func=cmd_escada_html)
