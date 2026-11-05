@@ -261,6 +261,35 @@ def snapshot_atual() -> dt.date | None:
     return _data(df.iloc[0]["d"])
 
 
+def leitura_do_fundo(codinome: str, ate: dt.date | str) -> dt.date | None:
+    """A leitura mais recente do Beyond EM QUE O FUNDO APARECE, ate `ate`.
+
+    `snapshot_atual` pega o MAX(Data) da tabela inteira. Se a carga daquela
+    leitura nao trouxe o fundo (leitura parcial, codinome trocado), a captura
+    volta vazia sem dizer por que. Aqui a pergunta e por fundo: qual a ultima
+    leitura que tem este codinome, sem passar da data da posicao.
+    """
+    from . import db
+
+    df = db.consultar(
+        "SELECT MAX(Data) AS d FROM dbo.TB_LIQUIDEZ_OPERACOES_4"
+        " WHERE Fundo = ? AND Data <= ?", (codinome, str(ate)))
+    if df.empty or df.iloc[0]["d"] is None or str(df.iloc[0]["d"]) in ("NaT", "None"):
+        return None
+    return _data(df.iloc[0]["d"])
+
+
+def resolver_leitura(modo: str | None, codinome: str, posicao) -> dt.date | None:
+    """`--leitura`: "atual" (padrao, MAX da tabela), "fundo" (a ultima do
+    codinome ate a posicao) ou uma data AAAA-MM-DD explicita."""
+    modo = (modo or "atual").strip().lower()
+    if modo == "atual":
+        return snapshot_atual()
+    if modo == "fundo":
+        return leitura_do_fundo(codinome, posicao)
+    return _data(modo)
+
+
 def _operacoes_do_dia(codinome: str, data: dt.date | str, dt_operacao) -> list[dict]:
     """Operacoes CCB/NC do Beyond originadas em `dt_operacao`.
 

@@ -13,7 +13,8 @@ sys.path.insert(0, str(RAIZ))
 
 from liquidez import queries as q  # noqa: E402
 
-SCRIPTS_PASSIVO = ("analise_passivo.py", "grafo_fundo.py", "grafo_passivo.py", "passivo_gestor.py")
+SCRIPTS_PASSIVO = ("analise_passivo.py", "grafo_fundo.py", "grafo_passivo.py", "passivo_gestor.py",
+                   "passivo_comissoes.py")
 
 
 def test_db_passivo_le_a_consolidada_com_uma_linha_por_nota():

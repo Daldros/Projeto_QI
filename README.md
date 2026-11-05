@@ -71,6 +71,7 @@ Rotina: `rodar_diario.ps1 -Data AAAA-MM-DD` (um dia) e `rodar_periodo.ps1`
 |---|---|
 | `liquidez/` | pacote: extração, tratamento, fluxo, matriz, indicadores, VaR/Sharpe, fatos, painel e relatórios |
 | `analise_passivo.py`, `grafo_fundo.py`, `grafo_passivo.py`, `passivo_gestor.py` | concentração e rede do passivo (rodam à mão) |
+| `passivo_comissoes.py` | base de passivo do mês para a apuração de comissões: posição diária por cotista das classes de `config/parametros/comissoes_fundos.csv`, em `saidas/` (roda à mão) |
 | `rodar_diario.ps1`, `rodar_periodo.ps1` | rotina |
 | `docs/` | diagnóstico e decisões |
 | `tests/` | testes sem banco (CI no GitHub) |
