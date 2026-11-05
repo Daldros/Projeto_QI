@@ -1006,3 +1006,46 @@ ENCONTRADA" ou "FUNDO AMBIGUO", NÃO edite o CSV: só devolva a saída, a linha
 NÃO abra, cole nem envie o .xlsx (traz CPF/CNPJ e nome de cotista): ele fica
 em saidas\ para a área pegar direto na máquina.
 ```
+
+## Rodada 26 (05/11/2026) — AMADEUS sem DC: onde ele está no Beyond até 30/09/2026 (SÓ LEITURA)
+
+A captura do Beyond (`cronograma beyond`) consulta sempre a leitura mais
+recente da TABELA INTEIRA (`MAX(Data)`) e procura `Fundo = 'Amadeus'` -- um
+codinome proposto pelo nome em 05/10/2026 e nunca confirmado. Se o Beyond grava
+o fundo com outro nome, ou se a última leitura não trouxe o AMADEUS, a visão de
+DC sai vazia sem aviso. O comando novo `cronograma beyond-diagnostico` responde,
+só com agregados (sem sacado, cedente nem documento): quais leituras existem
+até 30/09, com que nome o AMADEUS aparece e qual a última leitura dele até
+30/09, o que essa leitura tem (A Vencer x Vencido), e como estão a carteira e o
+estoque na data. A captura ganhou `--leitura fundo` (a última leitura do
+próprio fundo até a posição), que só será rodada na rodada seguinte, depois de
+conferir este resultado.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco nem em config\; nenhum
+passo altera código; o único commit permitido é o merge do passo 4. Rode no
+cmd, caminho absoluto na redireção, um passo de cada vez, sem encadear com &&.
+Qualquer falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. dir .venv\Scripts\python.exe
+4. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+5. git log --oneline -4 | findstr /C:"Beyond"   (precisa mostrar 1 linha)
+6. .venv\Scripts\python -m pytest -q          (esperado: 110 passed)
+7. git push origin main
+8. .venv\Scripts\python -m liquidez cronograma beyond-diagnostico --fundo "AMADEUS FIDC" --data 2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\liq26_amadeus_diag.txt 2>&1
+9. .venv\Scripts\python -m liquidez cronograma beyond-diagnostico --fundo "AMADEUS FIDC" --data 2026-09-30 --termo AMAD > C:\Users\mateus.castagnet\mapa_banco\liq26_amadeus_diag_amad.txt 2>&1
+10. .venv\Scripts\python -m liquidez cronograma beyond --fundo "AMADEUS FIDC" --data 2026-09-30 --leitura fundo --inventario > C:\Users\mateus.castagnet\mapa_banco\liq26_amadeus_inventario.txt 2>&1
+    (--inventario só lista, não captura nem grava nada)
+
+Me devolva a saída literal dos passos 1, 3, 5, 6 e 7 e os três arquivos
+liq26_*.txt INTEIROS, sem resumir (só agregados: datas, nomes de fundo,
+famílias, contagens e valores; sem sacado nem cedente).
+NÃO rode `cronograma beyond` sem --inventario, nem fluxo, fatos ou relatorio:
+isso fica para a próxima rodada, depois de conferirmos o nome e a leitura.
+```

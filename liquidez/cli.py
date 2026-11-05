@@ -868,16 +868,23 @@ def cmd_cronograma_beyond(args) -> int:
         print("Nenhum fundo com codinome do Beyond no filtro.")
         return 0
 
-    snapshot = bc.snapshot_atual()
-    if snapshot is None:
+    modo = getattr(args, "leitura", None) or "atual"
+    snapshot = bc.snapshot_atual() if modo == "atual" else None
+    if modo == "atual" and snapshot is None:
         print("Beyond sem nenhuma leitura disponivel.")
         return 1
-    print(f"Leitura do Beyond: {snapshot}\n")
+    print(f"Leitura do Beyond: {snapshot if modo == 'atual' else modo}\n")
 
     if args.inventario:
         for fundo in fundos:
             if fundo.codinome_beyond:
-                _inventario_beyond(fundo, snapshot)
+                leitura = snapshot or bc.resolver_leitura(
+                    modo, fundo.codinome_beyond, args.data or dt.date.today())
+                if leitura is None:
+                    print(f"AVISO  {fundo.nome_interno}: nenhuma leitura do Beyond com"
+                          f" Fundo = '{fundo.codinome_beyond}'.")
+                    continue
+                _inventario_beyond(fundo, leitura)
         return 0
 
     total_novas = total_fila = 0
@@ -894,6 +901,16 @@ def cmd_cronograma_beyond(args) -> int:
         if data is None or (hasattr(data, "__class__") and str(data) in ("NaT", "None")):
             print(f"AVISO  {fundo.nome_interno}: nenhuma posicao na MUL_GLD_CARTEIRA_UNIFICADA"
                   f" para docFundo = '{fundo.cnpj}'; pulado.")
+            continue
+
+        # `--leitura fundo`: a ultima leitura do Beyond que TEM este codinome,
+        # sem passar da posicao. A leitura global mais recente pode nao trazer
+        # o fundo, e a captura voltava vazia sem dizer por que.
+        leitura = snapshot or bc.resolver_leitura(modo, fundo.codinome_beyond, data)
+        if leitura is None:
+            print(f"AVISO  {fundo.nome_interno}: nenhuma leitura do Beyond com"
+                  f" Fundo = '{fundo.codinome_beyond}' ate {data}; pulado."
+                  f" Rode `cronograma beyond-diagnostico`.")
             continue
 
         cadastrado = cr.Cronograma.carregar_se_houver(fundo.cnpj)
@@ -913,21 +930,21 @@ def cmd_cronograma_beyond(args) -> int:
             if codigo is None or codigo in ja:
                 continue
             crono, motivo = bc.montar(
-                fundo.cnpj, codigo, fundo.codinome_beyond, None,
+                fundo.cnpj, codigo, fundo.codinome_beyond, leitura,
                 linha["Data_Aquisicao"], float(linha["Custo_Total"]),
                 str(linha["Emissor"] or ""))
             (capturados if crono else fila).append(crono or (codigo, motivo,
                                                              float(linha["Custo_Total"])))
         if capturados:
-            bc.gravar(fundo.cnpj, capturados, snapshot=snapshot)
+            bc.gravar(fundo.cnpj, capturados, snapshot=leitura)
         total_novas += len(capturados)
         total_fila += len(fila)
-        print(f"{fundo.nome_interno:<40} posicao {data} | candidatas {len(linhas):>3}"
+        print(f"{fundo.nome_interno:<40} posicao {data} | leitura {leitura} | candidatas {len(linhas):>3}"
               f" | ja cadastradas {len(ja):>3} | capturadas {len(capturados):>3} | fila {len(fila):>3}")
         if args.detalhar and linhas.empty:
             # Sem candidata nao ha fila nem motivo: e preciso olhar as duas pontas
             # (carteira e Beyond) para saber onde o casamento morre.
-            _diagnosticar_beyond(fundo, data, snapshot)
+            _diagnosticar_beyond(fundo, data, leitura)
         if fila and args.detalhar:
             for codigo, motivo, valor in fila:
                 print(f"     {codigo:<10} {valor:>16,.2f}  {motivo}")
@@ -936,6 +953,140 @@ def cmd_cronograma_beyond(args) -> int:
     if total_fila:
         print("Use --detalhar para ver o motivo de cada uma.")
     return 2 if total_fila else 0
+
+
+def _secao(titulo: str, consulta) -> None:
+    """Imprime uma secao do diagnostico; falha vira linha, nao interrompe."""
+    print(f"\n== {titulo}")
+    try:
+        consulta()
+    except Exception as exc:  # noqa: BLE001
+        print(f"   falhou: {str(exc).splitlines()[0][:200]}")
+
+
+def _tabela(df, colunas=None) -> None:
+    import pandas as pd
+
+    if df is None or df.empty:
+        print("   (nenhuma linha)")
+        return
+    with pd.option_context("display.max_rows", 200, "display.max_columns", 20,
+                           "display.width", 200, "display.float_format", "{:,.2f}".format):
+        print("   " + (df[colunas] if colunas else df).to_string(index=False).replace("\n", "\n   "))
+
+
+def cmd_cronograma_beyond_diagnostico(args) -> int:
+    """Onde o fundo esta no Beyond, na carteira e no estoque, ate a data. SO SELECT.
+
+    Responde, para uma data de posicao:
+      1. quais leituras do Beyond existem ate a data (a tabela e semanal);
+      2. com que NOME o fundo aparece no Beyond (o codinome do cadastro pode
+         nao ser o da tabela) e qual a ultima leitura de cada nome ate a data;
+      3. o que a ultima leitura do fundo tem: familia x situacao (A Vencer,
+         Vencido...), operacoes, titulos, valor e vencimentos;
+      4. a carteira da data (por Base_Origem) e as NC/CCB que a captura procura;
+      5. o estoque (HOD_TB_ESTOQUE_UNIFICADO) da data por Status_Recebivel, e a
+         ultima data de estoque ate ela.
+    So agregados: nenhum sacado, cedente ou documento.
+    """
+    from . import db
+    from .queries import escapar_like
+
+    cadastro = Cadastro(Path(args.diretorio)).carregar()
+    fundo = cadastro.obter(args.fundo)
+    if fundo is None:
+        print(f"Fundo nao encontrado no cadastro: {args.fundo}")
+        return 1
+    data = args.data
+    codinome = fundo.codinome_beyond or ""
+    termo = (args.termo or fundo.nome_interno.split()[0]).strip().upper()
+    print(f"{fundo.nome_interno} | CNPJ {fundo.cnpj} | cc {fundo.cc} | codinome Beyond "
+          f"'{codinome or '-'}' | posicao {data} | termo de busca '{termo}'")
+    achado = {"nome": None, "leitura": None}
+
+    def leituras():
+        df = db.consultar(
+            "SELECT TOP (12) Data, COUNT(DISTINCT Fundo) AS fundos, COUNT(*) AS linhas"
+            " FROM dbo.TB_LIQUIDEZ_OPERACOES_4 WHERE Data <= ?"
+            " GROUP BY Data ORDER BY Data DESC", (data,))
+        mx = db.consultar("SELECT MAX(Data) AS d FROM dbo.TB_LIQUIDEZ_OPERACOES_4")
+        print(f"   leitura mais recente da tabela inteira (o que a captura usa hoje): {mx.iloc[0]['d']}")
+        _tabela(df)
+
+    def nomes():
+        df = db.consultar(
+            "SELECT Fundo, COUNT(DISTINCT Data) AS leituras, MIN(Data) AS primeira,"
+            " MAX(Data) AS ultima, MAX(CASE WHEN Data <= ? THEN Data END) AS ultima_ate_posicao,"
+            " COUNT(*) AS linhas"
+            " FROM dbo.TB_LIQUIDEZ_OPERACOES_4"
+            " WHERE UPPER(Fundo) LIKE ? ESCAPE '\\' OR Fundo = ?"
+            " GROUP BY Fundo ORDER BY Fundo",
+            (data, "%" + escapar_like(termo) + "%", codinome))
+        _tabela(df)
+        if df.empty:
+            print(f"   NENHUM nome com '{termo}' nem igual a '{codinome}' na tabela.")
+            return
+        exato = df[df["Fundo"] == codinome]
+        escolha = exato if not exato.empty else (df if len(df) == 1 else df.iloc[0:0])
+        if escolha.empty:
+            print("   mais de um nome casa o termo: rode de novo com --termo mais especifico")
+            return
+        r = escolha.iloc[0]
+        achado["nome"], achado["leitura"] = r["Fundo"], r["ultima_ate_posicao"]
+        origem = "codinome do cadastro" if not exato.empty else "UNICO nome que casa o termo (codinome do cadastro NAO casa)"
+        print(f"   usado: Fundo = '{r['Fundo']}' ({origem}); ultima leitura ate {data}: {r['ultima_ate_posicao']}")
+
+    def inventario():
+        if not achado["nome"] or achado["leitura"] in (None, "") or str(achado["leitura"]) in ("NaT", "None"):
+            print("   sem leitura do fundo ate a data")
+            return
+        df = db.consultar(
+            "SELECT Grupo_Produto, Situacao_Titulo, COUNT(DISTINCT Operacao) AS operacoes,"
+            " COUNT(*) AS titulos, SUM(TRY_CAST(Valor_Aplicado AS FLOAT)) AS aplicado,"
+            " MIN(Data_Vencimento) AS venc_min, MAX(Data_Vencimento) AS venc_max"
+            " FROM dbo.TB_LIQUIDEZ_OPERACOES_4 WHERE Fundo = ? AND Data = ?"
+            " GROUP BY Grupo_Produto, Situacao_Titulo ORDER BY Grupo_Produto, Situacao_Titulo",
+            (achado["nome"], str(achado["leitura"])))
+        print(f"   Fundo = '{achado['nome']}' na leitura {achado['leitura']}")
+        _tabela(df)
+
+    def carteira():
+        u = db.consultar(f"SELECT MAX(dtReferencia) AS d FROM {CARTEIRA}"
+                         " WHERE docFundo = ? AND dtReferencia <= ?", (fundo.cnpj, data))
+        print(f"   ultima carteira ate {data}: {u.iloc[0]['d']}")
+        df = db.consultar(
+            "SELECT dsBaseOrigem AS Base_Origem, COUNT(*) AS linhas,"
+            " SUM(CAST(vlLiquido AS FLOAT)) AS valor_liquido,"
+            " SUM(CASE WHEN cdAtivo LIKE 'NCPX%' OR cdAtivo LIKE 'CCBPX%' THEN 1 ELSE 0 END) AS nc_ccb,"
+            " SUM(CASE WHEN (cdAtivo LIKE 'NCPX%' OR cdAtivo LIKE 'CCBPX%') AND vlCustoTotal > 0"
+            "          THEN 1 ELSE 0 END) AS nc_ccb_com_custo"
+            f" FROM {CARTEIRA} WHERE docFundo = ? AND dtReferencia = ?"
+            " GROUP BY dsBaseOrigem ORDER BY dsBaseOrigem", (fundo.cnpj, data))
+        _tabela(df)
+
+    def estoque():
+        u = db.consultar("SELECT MAX(Data_Posicao) AS d FROM dbo.HOD_TB_ESTOQUE_UNIFICADO"
+                         " WHERE CNPJ_Fundo = ? AND Data_Posicao <= ?", (fundo.cnpj, data))
+        ultima = u.iloc[0]["d"]
+        print(f"   ultimo estoque ate {data}: {ultima}")
+        for quando in dict.fromkeys([data, ultima]):
+            if quando is None or str(quando) in ("NaT", "None"):
+                continue
+            df = db.consultar(
+                "SELECT Status_Recebivel, COUNT(*) AS recebiveis,"
+                " SUM(TRY_CAST(Valor_Presente AS FLOAT)) AS valor_presente"
+                " FROM dbo.HOD_TB_ESTOQUE_UNIFICADO WHERE CNPJ_Fundo = ? AND Data_Posicao = ?"
+                " GROUP BY Status_Recebivel ORDER BY Status_Recebivel",
+                (fundo.cnpj, str(quando)[:10]))
+            print(f"   estoque em {str(quando)[:10]}:")
+            _tabela(df)
+
+    _secao(f"1. leituras do Beyond ate {data}", leituras)
+    _secao("2. nome do fundo no Beyond", nomes)
+    _secao("3. ultima leitura do fundo: familia x situacao", inventario)
+    _secao(f"4. carteira (datalake) em {data}", carteira)
+    _secao(f"5. estoque (riscogc) ate {data}", estoque)
+    return 0
 
 
 def _data_da_carga_local(saida: Path, cnpj: str) -> str | None:
@@ -2795,7 +2946,17 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--detalhar", action="store_true", help="mostra o motivo de cada linha na fila")
     p.add_argument("--inventario", action="store_true",
                    help="so lista o que o Beyond tem para o fundo (familia x produto); nao captura")
+    p.add_argument("--leitura", default="atual",
+                   help="leitura do Beyond: 'atual' (MAX da tabela, padrao), 'fundo' (a ultima"
+                        " em que o codinome aparece, ate a posicao) ou AAAA-MM-DD")
     p.set_defaults(func=cmd_cronograma_beyond)
+
+    p = sc.add_parser("beyond-diagnostico",
+                      help="SO LEITURA: onde o fundo esta no Beyond, na carteira e no estoque ate a data")
+    p.add_argument("--fundo", required=True, help="CNPJ ou nome interno")
+    p.add_argument("--data", required=True, help="data de posicao AAAA-MM-DD (ex.: 2026-09-30)")
+    p.add_argument("--termo", help="trecho do nome do fundo no Beyond (padrao: 1a palavra do nome)")
+    p.set_defaults(func=cmd_cronograma_beyond_diagnostico)
 
     # --- fatos (camada de BI) ---
     p_fatos = sub.add_parser("fatos", help="camada de fatos para BI, particionada por data")
