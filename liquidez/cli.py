@@ -1089,6 +1089,78 @@ def cmd_cronograma_beyond_diagnostico(args) -> int:
     return 0
 
 
+def cmd_escada(args) -> int:
+    """Escada de liquidez de UM fundo numa data, em texto, lida da camada de fatos.
+
+    O painel e o relatorio por fundo sempre mostram a data MAIS RECENTE gravada
+    em bi/. Para conferir uma data passada (reprocessada depois), este comando
+    monta a mesma escada do relatorio do fundo (`relatorio_fundo._escada_liquidez`)
+    sobre as particoes da data pedida e abre cada faixa nas fontes: carteira por
+    produto, estoque `A Vencer C/ Carrego` e fluxo projetado. So agregados.
+    """
+    import pandas as pd
+
+    from . import relatorio_fundo as rf
+    from .analise import PRODUTO_DO_FLUXO
+
+    cadastro = Cadastro(Path(args.diretorio)).carregar()
+    fundo = cadastro.obter(args.fundo)
+    if fundo is None:
+        print(f"Fundo nao encontrado no cadastro: {args.fundo}")
+        return 1
+    part = rf._Particoes(Path(args.destino))
+    data = args.data
+    m = part.do_fundo("fato_matriz", data, fundo.cnpj)
+    fl = part.do_fundo("fato_fluxo", data, fundo.cnpj)
+    rel = part.do_fundo("fato_relatorio", data, fundo.cnpj)
+    ind = part.do_fundo("fato_indicadores", data, fundo.cnpj)
+    cc = (ind["prazo_cotizacao"].iloc[0] if not ind.empty and "prazo_cotizacao" in ind.columns
+          and pd.notna(ind["prazo_cotizacao"].iloc[0]) else fundo.cc)
+    print(f"{fundo.nome_interno} | {fundo.cnpj} | data {data} | cc {cc}")
+    print(f"particoes em {Path(args.destino).resolve()}: matriz {len(m)} linha(s), "
+          f"fluxo {len(fl)} parcela(s), relatorio {len(rel)} linha(s), indicadores {len(ind)}")
+    if m.empty:
+        print("Sem fato_matriz do fundo nesta data: rode `fatos gerar` para a data.")
+        return 1
+
+    def rs(v):
+        return f"{float(v):>18,.2f}"
+
+    rot, val, _tit, fora = rf._escada_liquidez(m, rel, fl if not fl.empty else None, cc)
+    print("\n== escada (mesma regra do relatorio do fundo)")
+    for r, v in zip(rot, val):
+        print(f"   {r:<14}{rs(v)}")
+    print(f"   {'TOTAL':<14}{rs(fora['total'])}")
+    print(f"   dentro da janela (0..cc): {rs(fora['dentro']) if fora.get('dentro') is not None else '-'}")
+    print(f"   fora do grafico -> cotas de fundo {rs(fora['fundos'])} | vencidos {rs(fora['vencidos'])}"
+          f" | cauda (> faixas numeradas) {rs(fora['cauda'])} | sem prazo no dia 0 {rs(fora['sem_prazo'])}")
+    print(f"   fluxo projetado: {rs(fora['fluxo'])} em {fora['fluxo_ops']} operacao(oes); "
+          f"produto trocado pelo fluxo: {fora['produto_fluxo'] or 'nenhum (sem fluxo: o '+PRODUTO_DO_FLUXO+' vem da matriz)'}")
+
+    mm = m[~m["e_total"].fillna(False)].copy()
+    mm["faixa"] = mm["faixa_prazo"].astype(str)
+    print("\n== matriz por tabela x produto (soma de todas as faixas, sem as linhas de total)")
+    # No estoque a linha de soma vem rotulada "Exposição" com e_total FALSO.
+    resumo = (mm[~mm["faixa"].str.strip().str.lower().str.startswith("exposi")]
+              .groupby(["tabela", "produto"])
+              .agg(linhas=("valor", "size"), valor=("valor", "sum")).reset_index())
+    _tabela(resumo)
+    est = mm[mm["tabela"] == "estoque"]
+    if not est.empty:
+        print("\n== estoque: linhas de soma e vencidos por coluna")
+        rotulo = est["faixa"].str.strip().str.lower()
+        _tabela(est[rotulo.str.startswith(("exposi", "vencido", ">"))]
+                .groupby(["faixa", "produto"])["valor"].sum().reset_index())
+    else:
+        print("\n== estoque: NENHUMA linha na matriz (Vencidos / A Vencer nao entram)")
+    if not fl.empty:
+        print("\n== fluxo projetado por mes (vl_parcela | marcado = amortizacao + acrual)")
+        f = fl.assign(mes=pd.to_datetime(fl["dt_vencimento"]).dt.to_period("M").astype(str))
+        cols = [c for c in ("vl_amortizacao", "vl_acrual", "vl_parcela") if c in f.columns]
+        _tabela(f.groupby("mes")[cols].sum().reset_index().head(18))
+    return 0
+
+
 def _data_da_carga_local(saida: Path, cnpj: str) -> str | None:
     """Data de posicao da carteira extraida em `saida` para o fundo, se houver."""
     from .extrator import carregar_base
@@ -2957,6 +3029,13 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--data", required=True, help="data de posicao AAAA-MM-DD (ex.: 2026-09-30)")
     p.add_argument("--termo", help="trecho do nome do fundo no Beyond (padrao: 1a palavra do nome)")
     p.set_defaults(func=cmd_cronograma_beyond_diagnostico)
+
+    # --- escada (conferencia de uma data) ---
+    p = sub.add_parser("escada", help="escada de liquidez de um fundo numa data, em texto (le bi/)")
+    p.add_argument("--fundo", required=True, help="CNPJ ou nome interno")
+    p.add_argument("--data", required=True, help="data AAAA-MM-DD da particao")
+    p.add_argument("--destino", default="bi", help="raiz da camada de fatos (padrao: bi)")
+    p.set_defaults(func=cmd_escada)
 
     # --- fatos (camada de BI) ---
     p_fatos = sub.add_parser("fatos", help="camada de fatos para BI, particionada por data")
