@@ -1146,3 +1146,42 @@ Me devolva a saída literal dos passos 1, 4, 5, 6 e 13 e, SEM resumir:
   linha "ANBIMA enquadrado ate" (inclusive). NÃO cole a "Tabela vencidos".
 NÃO rode painel nem relatorio, e NÃO envie arquivos de dados\, bi\ ou config\.
 ```
+
+## Rodada 29 (05/11/2026) — AMADEUS em 30/09/2026: escada com H = D+21, faixas até 90 dias e vencidos
+
+Pedido da área: a página do AMADEUS de novo, com horizonte de resgate H = D+21
+(o cc do cadastro é D+29), escada em 0–7, 8–15, 16–30, 31–60 e 61–90 dias (mais
+>90) e os vencidos numa coluna própria. O comando novo `escada-html` refaz o
+relatório e os indicadores com H no lugar do cc (e mostra o cc ao lado), abre a
+matriz e o estoque até 90 dias e lê o fluxo do DC da partição de 30/09 em
+`bi\`. Usa a carga da rodada 27 (`dados\amadeus_2026-09-30`). A página e o
+texto só têm agregados (nenhum cotista, sacado ou documento): podem voltar.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 3. Rode no cmd, caminho
+absoluto na redireção, um passo de cada vez, sem encadear com &&. Qualquer
+falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+4. git log --oneline -4 | findstr /I /C:"horizonte"   (precisa mostrar 1 linha)
+5. .venv\Scripts\python -m pytest -q          (esperado: 118 passed)
+6. git push origin main
+7. dir dados\amadeus_2026-09-30\carteira.parquet
+   (se não existir, rode antes:
+    .venv\Scripts\python -m liquidez extrair --data 2026-09-30 --fundo "AMADEUS FIDC" --salvar --saida dados\amadeus_2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\liq29_extrair.txt 2>&1)
+8. .venv\Scripts\python -m liquidez escada-html --fundo "AMADEUS FIDC" --data 2026-09-30 --saida dados\amadeus_2026-09-30 --horizonte 21 --limite 90 --faixas 7,15,30,60,90 > C:\Users\mateus.castagnet\mapa_banco\liq29_escada_html.txt 2>&1
+9. dir relatorios\escada_49815454000100_2026-09-30_H21_90d.html
+10. git status --short           (precisa continuar vazio)
+
+Me devolva a saída literal dos passos 1, 4, 5, 6, 7, 9 e 10, o
+liq29_escada_html.txt INTEIRO e ANEXE o arquivo
+relatorios\escada_49815454000100_2026-09-30_H21_90d.html (só agregados; pode
+ser enviado). NÃO rode painel nem relatorio, e NÃO envie dados\, bi\ ou config\.
+```
