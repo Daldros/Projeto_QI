@@ -179,6 +179,63 @@ def aplicar_depara_produtos(carteira: pd.DataFrame, regras: list[dict]) -> pd.Da
     return df
 
 
+# Lancamentos de DC que se anulam dentro do fundo: mesma familia de ativo, mesmo
+# emissor, valores opostos. Caso real: AMADEUS FIDC em 30/09/2026, tres pares
+# MEZAN/SRP SINGCTVM (R$ 15,67 / 43,07 / 20,44 mi, saldo R$ -0,01) sob "Renda
+# Fixa" com Codigo_Op C######, que o de-para mandava para DC. Nao sao operacao
+# de credito: no DC eles pediam cronograma (8 pendencias no `validar`) e o fluxo
+# os espalhava pelo estoque, +X e -X nas mesmas datas.
+#
+# Saem do DC para um produto proprio e SEM prazo: continuam na Exposicao Total
+# (o PL nao muda, o par soma zero) e nao entram em faixa nenhuma. Nao se exclui
+# por codigo de ativo porque em outros fundos (HOD II) a linha MEZAN e posicao
+# de verdade -- o que caracteriza o caso e o par que se anula, nao o nome.
+PRODUTO_COMPENSADO = "DC COMPENSADO"
+TOLERANCIA_PAR = 0.05          # R$; arredondamento de centavos entre as pernas
+
+
+def separar_pares_compensados(carteira: pd.DataFrame, produto: str = "DC") -> pd.DataFrame:
+    """Marca os pares de linhas do `produto` que se anulam (ver PRODUTO_COMPENSADO).
+
+    Par = mesmo Codigo_Ativo e mesmo Emissor (sem diferenciar espaco e caixa),
+    um valor positivo e um negativo, |a + b| <= TOLERANCIA_PAR. Casamento guloso
+    pelo menor residuo; linha sem par fica como esta.
+    """
+    if carteira.empty or COL_BASE_ORIGEM not in carteira.columns:
+        return carteira
+    df = carteira.copy()
+    valor = pd.to_numeric(df["Valor_Liquido"], errors="coerce")
+    alvo = (_texto(df[COL_BASE_ORIGEM]).str.upper() == produto.upper()) & valor.notna() & (valor != 0)
+    if not alvo.any():
+        return df
+    ativo = _texto(df.get("Codigo_Ativo", pd.Series("", index=df.index))).str.upper().str.replace(r"\s+", " ", regex=True)
+    emissor = _texto(df.get("Emissor", pd.Series("", index=df.index))).str.upper().str.replace(r"\s+", " ", regex=True)
+    pares = []
+    for _chave, idx in df[alvo].groupby([ativo[alvo], emissor[alvo]]).groups.items():
+        pos = [i for i in idx if valor[i] > 0]
+        neg = [i for i in idx if valor[i] < 0]
+        candidatos = sorted((abs(valor[i] + valor[j]), i, j) for i in pos for j in neg
+                            if abs(valor[i] + valor[j]) <= TOLERANCIA_PAR)
+        usados = set()
+        for _res, i, j in candidatos:
+            if i in usados or j in usados:
+                continue
+            usados.update((i, j))
+            pares.append((i, j))
+    if not pares:
+        return df
+    linhas = [k for par in pares for k in par]
+    df.loc[linhas, COL_BASE_ORIGEM] = PRODUTO_COMPENSADO
+    if COL_QTDE_DIAS in df.columns:
+        df[COL_QTDE_DIAS] = df[COL_QTDE_DIAS].astype("Float64")
+        df.loc[linhas, COL_QTDE_DIAS] = pd.NA
+    bruto = float(sum(abs(valor[i]) for i, _j in pares))
+    saldo = float(valor[linhas].sum())
+    log.info("%s: %d par(es) que se anulam saem do %s para '%s' (R$ %s em cada perna, saldo R$ %.2f).",
+             produto, len(pares), produto, PRODUTO_COMPENSADO, f"{bruto:,.2f}", saldo)
+    return df
+
+
 def carregar_excluidos(caminho: Path = ARQUIVO_EXCLUIDOS) -> dict[str, list[str]]:
     """Le as listas de ativos excluidos (colunas C e G da aba Vencidos)."""
     dados = json.loads(Path(caminho).read_text(encoding="utf-8"))
@@ -594,6 +651,7 @@ def tratar_fundo(
     carteira_tratada = calcular_dias(
         carteira, tabela_prazos, regra_vencidos, excluidos, regra
     )
+    carteira_tratada = separar_pares_compensados(carteira_tratada)
     bd_tratado = marcar_vencidos_bd(bd, catalogo.estoque)
     vencidos = montar_tabela_vencidos(
         fundo, data, carteira, bd, regra_vencidos, catalogo.estoque
