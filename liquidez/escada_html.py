@@ -36,7 +36,11 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-CORTES_PADRAO = (7, 15, 30, 60, 90)
+# Escada pedida pela area em 05/11/2026: liquidez imediata (D+0), ate 15, 30,
+# 60, 90, 180 e 360 dias, e acima de 360.
+CORTES_PADRAO = (0, 15, 30, 60, 90, 180, 360)
+LIMITE_PADRAO = 360
+
 
 CAT_DC = "Direitos creditórios (fluxo)"
 CAT_DC_SEM_FLUXO = "Direitos creditórios (sem fluxo)"
@@ -45,6 +49,9 @@ CAT_COTAS = "Cotas de fundos"
 CAT_CAIXA = "CPR e tesouraria"
 CAT_OUTROS = "Renda fixa e outros"
 CATEGORIAS = (CAT_DC, CAT_DC_SEM_FLUXO, CAT_ESTOQUE, CAT_COTAS, CAT_OUTROS, CAT_CAIXA)
+# Direitos creditorios: o DC da carteira (com e sem fluxo) e os recebiveis do
+# estoque do fundo investido. E a coluna "dos quais direitos creditorios".
+CATS_DC = (CAT_DC, CAT_DC_SEM_FLUXO, CAT_ESTOQUE)
 
 # O DC de emissor vencido esta na linha "Vencidos" da matriz (V_CARTEIRA); as
 # parcelas dele no fluxo sao descartadas para nao contar duas vezes.
@@ -75,11 +82,17 @@ class Escada:
 
     # --- faixas --------------------------------------------------------------
     def rotulos(self) -> list[str]:
+        """Faixa a faixa (sem acumular): 'Imediata', '1–15 d', ..., '> 360 d'."""
         r, ini = [], 0
         for fim in self.cortes:
-            r.append(f"{ini}–{fim}")
+            r.append("Imediata" if fim == 0 else (f"{ini} d" if ini == fim else f"{ini}–{fim} d"))
             ini = fim + 1
-        return r + [f">{self.cortes[-1]}"]
+        return r + [f"> {self.cortes[-1]} d"]
+
+    def rotulos_ate(self) -> list[str]:
+        """Acumulado: 'Liquidez imediata', 'Até 15 dias', ..., 'Acima de 360 dias'."""
+        r = ["Liquidez imediata" if fim == 0 else f"Até {fim} dias" for fim in self.cortes]
+        return r + [f"Acima de {self.cortes[-1]} dias"]
 
     def faixa_de(self, dias) -> int | None:
         if dias is None or pd.isna(dias):
@@ -133,7 +146,7 @@ def _fluxo_da_data(destino_bi: Path, data: str, cnpj: str) -> pd.DataFrame:
 
 
 def calcular(cadastro, fundo, saida: Path, data: str, horizonte: int,
-             limite: int = 90, cortes: tuple[int, ...] = CORTES_PADRAO,
+             limite: int = LIMITE_PADRAO, cortes: tuple[int, ...] = CORTES_PADRAO,
              destino_bi: Path = Path("bi")) -> Escada:
     from .analise import (
         LINHA_EXPOSICAO, LINHA_VENCIDOS, VALOR_CHEIO,
@@ -287,6 +300,30 @@ def conciliacao(e: Escada, venc_total: float) -> str:
             f" R$ {_brl(e.estoque_total)} = R$ {_brl(esperado)}. Diferenca R$ {_brl(soma - esperado)}.")
 
 
+def escada_ate(e: Escada, tab: pd.DataFrame, venc_total: float) -> pd.DataFrame:
+    """Escada no formato pedido: 'Liquidez imediata', 'Ate 15 dias', ... acumulados,
+    'Acima de N dias' com o que sobra, e Vencidos -- total e dos quais DC."""
+    faixas = [c for c in tab.columns if c != "sem prazo"]
+    total = tab[faixas].sum()
+    dc = tab.loc[[c for c in CATS_DC if c in tab.index], faixas].sum()
+    linhas = []
+    for i, rot in enumerate(e.rotulos_ate()):
+        ultimo = i == len(faixas) - 1
+        v = float(total.iloc[i]) if ultimo else float(total.iloc[: i + 1].sum())
+        d = float(dc.iloc[i]) if ultimo else float(dc.iloc[: i + 1].sum())
+        linhas.append({"Prazo": rot, "Valor": v, "% do PL": v / e.pl if e.pl else None,
+                       "Dos quais direitos creditórios": d})
+    sem = float(tab["sem prazo"].sum()) if "sem prazo" in tab.columns else 0.0
+    if abs(sem) > 0.005:
+        linhas.append({"Prazo": "Sem prazo", "Valor": sem, "% do PL": sem / e.pl if e.pl else None,
+                       "Dos quais direitos creditórios": float(tab.loc[[c for c in CATS_DC if c in tab.index],
+                                                                       "sem prazo"].sum())})
+    linhas.append({"Prazo": "Vencidos", "Valor": venc_total,
+                   "% do PL": venc_total / e.pl if e.pl else None,
+                   "Dos quais direitos creditórios": venc_total})
+    return pd.DataFrame(linhas)
+
+
 def resumo_texto(e: Escada) -> str:
     """O mesmo conteudo da pagina, para a saida do terminal (sem cotista)."""
     tab = e.por_faixa(e.entradas, "categoria")
@@ -297,6 +334,12 @@ def resumo_texto(e: Escada) -> str:
                       f" | Cx/Cotista {_pct(cx['cx_cotista'])} | Cx/GDP {_pct(cx['cx_gdp'])}"
                       f" | Caixa/Resgate {_pct(cx['caixa_resgate'])}")
     linhas.append(f"Escada somada ate D+{e.horizonte}: R$ {_brl(e.ate(e.horizonte))}")
+    linhas.append("")
+    vt0 = float(e.vencidos["valor"].sum()) if not e.vencidos.empty else 0.0
+    linhas.append(f"{'ESCADA (acumulada)':<24}{'VALOR':>20}{'% PL':>10}{'DOS QUAIS DC':>20}")
+    for _, r in escada_ate(e, tab, vt0).iterrows():
+        linhas.append(f"{r['Prazo']:<24}{_brl(r['Valor']):>20}{_pct(r['% do PL']):>10}"
+                      f"{_brl(r['Dos quais direitos creditórios']):>20}")
     linhas.append("")
     cab = f"{'':<32}" + "".join(f"{c:>16}" for c in tab.columns) + f"{'TOTAL':>16}"
     linhas.append(cab)
@@ -337,11 +380,27 @@ def _passo_redondo(amplitude: float, marcas: int = 5) -> float:
     return 10 * ordem
 
 
+def _acumulada(tab: pd.DataFrame) -> pd.DataFrame:
+    """Categoria x faixa ACUMULADA ('ate N'); a ultima faixa ('acima de') fica como e."""
+    faixas = [c for c in tab.columns if c != "sem prazo"]
+    t = tab[faixas].copy()
+    acum = t.iloc[:, :-1].cumsum(axis=1)
+    acum[faixas[-1]] = t[faixas[-1]]
+    return acum
+
+
 def _svg(e: Escada, tab: pd.DataFrame, venc_total: float) -> str:
-    """Barras empilhadas por faixa; o que e negativo (CPR a pagar) desce abaixo do zero."""
+    """Barras empilhadas ACUMULADAS ('ate N dias'), 'acima de' e Vencidos a parte.
+
+    O que e negativo (CPR a pagar) desce abaixo do zero.
+    """
     import math
 
-    rot = list(tab.columns[:-1])                     # sem "sem prazo"
+    tab = _acumulada(tab)
+    curtos = ["Imediata" if fim == 0 else f"até {fim} d" for fim in e.cortes] + [f"> {e.cortes[-1]} d"]
+    rot = list(tab.columns)
+    nomes = dict(zip(rot, curtos))
+    titulos = dict(zip(rot, e.rotulos_ate()))
     colunas = rot + ["Vencidos"]
     pos = {c: float(tab[c].clip(lower=0).sum()) for c in rot}
     neg = {c: float(tab[c].clip(upper=0).sum()) for c in rot}
@@ -387,12 +446,12 @@ def _svg(e: Escada, tab: pd.DataFrame, venc_total: float) -> str:
                     abaixo += val
                 partes.append(f'<rect x="{x:.1f}" y="{min(y0, y1):.1f}" width="{barra:.1f}" '
                               f'height="{abs(y0 - y1):.1f}" style="fill:{CORES_CAT[cat]}">'
-                              f'<title>{html.escape(c)} dias · {html.escape(cat)}: R$ {_brl(val)}</title></rect>')
+                              f'<title>{html.escape(titulos[c])} · {html.escape(cat)}: R$ {_brl(val)}</title></rect>')
         total = float(tab[c].sum()) if c != "Vencidos" else venc_total
         partes.append(f'<text x="{x + barra / 2:.1f}" y="{y(pos[c]) - 6:.1f}" class="valor" '
                       f'text-anchor="middle">{_mi(total)}</text>')
         partes.append(f'<text x="{x + barra / 2:.1f}" y="{baixo + 20}" class="eixo" '
-                      f'text-anchor="middle">{html.escape(c if c == "Vencidos" else c + " d")}</text>')
+                      f'text-anchor="middle">{html.escape(nomes.get(c, c))}</text>')
     partes.append(f'<line x1="{esq}" x2="{larg - 8}" y1="{y(0):.1f}" y2="{y(0):.1f}" class="base"/></svg>')
     return "".join(partes)
 
@@ -431,7 +490,7 @@ def montar_html(e: Escada) -> str:
     t["Total"] = t.sum(axis=1)
     linhas = t.reset_index().rename(columns={"categoria": "Categoria"})
     tot = pd.DataFrame([["Total"] + list(t.sum())], columns=linhas.columns)
-    acum = pd.DataFrame([["Acumulado"] + list(t.drop(columns=["Total"]).sum().cumsum()) + [None]],
+    acum = pd.DataFrame([["Acumulado (até o prazo)"] + list(t.drop(columns=["Total"]).sum().cumsum()) + [None]],
                         columns=linhas.columns)
     pct = pd.DataFrame([["% do PL (acumulado)"]
                         + [v / e.pl if e.pl else None for v in t.drop(columns=["Total"]).sum().cumsum()]
@@ -447,7 +506,8 @@ def montar_html(e: Escada) -> str:
 
     corpo_escada = []
     for _, r in escada.iterrows():
-        cls = {"Total": "total", "Acumulado": "sub", "% do PL (acumulado)": "sub"}.get(r["Categoria"], "")
+        cls = {"Total": "total", "Acumulado (até o prazo)": "sub",
+               "% do PL (acumulado)": "sub"}.get(r["Categoria"], "")
         celulas = []
         for c in escada.columns:
             v = r[c]
@@ -456,10 +516,19 @@ def montar_html(e: Escada) -> str:
             else:
                 celulas.append(f"<td>{fmt_escada(c, v)}</td>")
         corpo_escada.append(f'<tr class="{cls}">' + "".join(celulas) + "</tr>")
-    cab = "".join(f"<th>{html.escape(c if c in ('Categoria', 'Total', 'sem prazo') else c + ' d')}</th>"
-                  for c in escada.columns)
+    cab = "".join(f"<th>{html.escape(c)}</th>" for c in escada.columns)
     tabela_escada = (f'<div class="rolagem"><table><thead><tr>{cab}</tr></thead>'
                      f'<tbody>{"".join(corpo_escada)}</tbody></table></div>')
+
+    ate = escada_ate(e, tab, venc_total)
+    corpo_ate = []
+    for _, r in ate.iterrows():
+        cls = "venc-linha" if r["Prazo"] == "Vencidos" else ""
+        corpo_ate.append(f'<tr class="{cls}"><td>{html.escape(r["Prazo"])}</td><td>{_brl(r["Valor"])}</td>'
+                         f'<td>{_pct(r["% do PL"])}</td><td>{_brl(r["Dos quais direitos creditórios"])}</td></tr>')
+    tabela_ate = ('<div class="rolagem"><table class="ate"><thead><tr><th>Prazo</th><th>Valor (R$)</th>'
+                  '<th>% do PL</th><th>Dos quais direitos creditórios (R$)</th></tr></thead><tbody>'
+                  + "".join(corpo_ate) + "</tbody></table></div>")
 
     # vencidos por componente e por faixa de vencimento (o carrego ainda tem prazo)
     vf = e.por_faixa(e.vencidos.assign(dias=e.vencidos["dias"]), "componente") if not e.vencidos.empty \
@@ -470,7 +539,7 @@ def montar_html(e: Escada) -> str:
         vf_l = vf.reset_index().rename(columns={"componente": "Componente"})
         vf_l = pd.concat([vf_l, pd.DataFrame([["Total"] + list(vf.sum())], columns=vf_l.columns)],
                          ignore_index=True)
-        cab_v = [c if c in ("Componente", "Total", "sem prazo") else c + " d" for c in vf_l.columns]
+        cab_v = list(vf_l.columns)
         tabela_venc = _tabela(vf_l, cab_v, classe_ultima=True)
     else:
         tabela_venc = "<p>Nenhum vencido na data.</p>"
@@ -559,6 +628,7 @@ th,td{{padding:6px 8px;border-bottom:1px solid var(--borda);text-align:right;whi
 th:first-child,td:first-child{{text-align:left}}th{{color:var(--tinta2);font-weight:600}}
 tr.total td{{font-weight:650;border-top:2px solid var(--eixo)}}tr.sub td{{color:var(--tinta2)}}
 td.ok{{color:var(--bom)}}td.ruim{{color:var(--critico)}}
+table.ate{{max-width:720px}}table.ate td:first-child{{font-weight:600}}tr.venc-linha td{{color:var(--critico)}}
 ul{{margin:6px 0;padding-left:20px;color:var(--tinta2);font-size:13px}}
 </style></head><body>
 <div class="faixa">{marca}</div>
@@ -568,16 +638,22 @@ ul{{margin:6px 0;padding-left:20px;color:var(--tinta2);font-size:13px}}
 horizonte de resgate H = D+{e.horizonte} (cc do cadastro: D+{e.cc}) · escada até {e.limite} dias</div>
 <div class="kpis">{kpis}</div>
 
-<h2>Escada de liquidez por faixa de prazo (R$ milhões)</h2>
+<h2>Escada de liquidez</h2>
+{tabela_ate}
+<p class="nota">Valores acumulados: "Até 30 dias" é tudo o que vira caixa em até 30 dias, incluindo a
+liquidez imediata. "Acima de {e.cortes[-1]} dias" é o que sobra. Direitos creditórios = DC da carteira
+(pelo fluxo projetado) + recebíveis do estoque do fundo investido. Vencidos não entram na escada.</p>
+
+<h2>Escada acumulada por categoria (R$ milhões)</h2>
 <div class="cartao"><div class="rolagem"><div class="tela-grafico">{_svg(e, tab, venc_total)}</div></div><div class="legenda">{legenda}</div></div>
-<p class="nota">O número sobre cada barra é o líquido da faixa; o que é negativo (CPR a pagar,
-provisão) aparece abaixo do zero.</p>
+<p class="nota">Cada barra acumula tudo o que vira caixa até aquele prazo; o número sobre ela é o
+total líquido. O que é negativo (CPR a pagar, provisão) aparece abaixo do zero.</p>
 <p class="nota">Valor de hoje de cada ativo, posto na faixa em que vira caixa. Direitos creditórios
 pelo fluxo projetado, parcela a parcela (principal + juro já corrido); recebíveis do estoque pelo
 prazo do título; cotas de fundo pelo prazo de resgate; CPR e tesouraria no dia 0. Vencidos ficam
 numa barra à parte e não somam na escada.</p>
 
-<h2>Escada por categoria (R$)</h2>
+<h2>Escada por categoria, faixa a faixa (R$)</h2>
 {tabela_escada}
 <p class="nota">Escada somada até D+{e.horizonte}: R$ {_brl(e.ate(e.horizonte))}. O Caixa Potencial
 oficial em D+{e.horizonte} (acima) aplica as regras do relatório: cota de fundo só conta se resgata
@@ -611,7 +687,7 @@ documento. Gerado em {dt.datetime.now():%d/%m/%Y %H:%M}.</p>
 """
 
 
-def gerar(cadastro, fundo, saida: Path, data: str, horizonte: int, limite: int = 90,
+def gerar(cadastro, fundo, saida: Path, data: str, horizonte: int, limite: int = LIMITE_PADRAO,
           cortes: tuple[int, ...] = CORTES_PADRAO, destino_bi: Path = Path("bi"),
           html_saida: Path | None = None) -> tuple[Path, Escada]:
     e = calcular(cadastro, fundo, saida, data, horizonte, limite, cortes, destino_bi)

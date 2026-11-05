@@ -1185,3 +1185,39 @@ liq29_escada_html.txt INTEIRO e ANEXE o arquivo
 relatorios\escada_49815454000100_2026-09-30_H21_90d.html (só agregados; pode
 ser enviado). NÃO rode painel nem relatorio, e NÃO envie dados\, bi\ ou config\.
 ```
+
+## Rodada 30 (05/11/2026) — AMADEUS em 30/09/2026: escada de liquidez imediata a acima de 360 dias
+
+A área pediu a escada no formato: liquidez imediata, até 15, até 30, até 60, até
+90, até 180, até 360 e acima de 360 dias. Os valores são ACUMULADOS ("até 30
+dias" inclui a liquidez imediata e o que vence até 15), "acima de 360" é o que
+sobra, e os vencidos vêm numa linha própria. Ao lado do total, a coluna "dos
+quais direitos creditórios" (DC da carteira pelo fluxo + recebíveis do
+estoque). Esse virou o padrão do `escada-html` (`--faixas 0,15,30,60,90,180,360
+--limite 360`); H continua D+21. A página e o texto só têm agregados.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 3. Rode no cmd, caminho
+absoluto na redireção, um passo de cada vez, sem encadear com &&. Qualquer
+falha, PARE e devolva a saída inteira.
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+4. git log --oneline -4 | findstr /I /C:"imediata"   (precisa mostrar 1 linha)
+5. .venv\Scripts\python -m pytest -q          (esperado: 119 passed)
+6. git push origin main
+7. .venv\Scripts\python -m liquidez escada-html --fundo "AMADEUS FIDC" --data 2026-09-30 --saida dados\amadeus_2026-09-30 --horizonte 21 > C:\Users\mateus.castagnet\mapa_banco\liq30_escada_html.txt 2>&1
+8. dir relatorios\escada_49815454000100_2026-09-30_H21_360d.html
+9. git status --short           (precisa continuar vazio)
+
+Me devolva a saída literal dos passos 1, 4, 5, 6, 8 e 9, o
+liq30_escada_html.txt INTEIRO e ANEXE o arquivo
+relatorios\escada_49815454000100_2026-09-30_H21_360d.html (só agregados; pode
+ser enviado). NÃO rode painel nem relatorio, e NÃO envie dados\, bi\ ou config\.
+```
