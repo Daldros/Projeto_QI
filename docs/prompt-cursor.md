@@ -1099,3 +1099,50 @@ Me devolva a saída literal dos passos 1, 4, 5, 6 e 14 e, SEM resumir:
   ate" (inclusive). NÃO cole a "Tabela vencidos" (CPF e nome de sacado PF).
 NÃO rode painel nem relatorio, e NÃO envie arquivos de dados\, bi\ ou config\.
 ```
+
+## Rodada 28 (05/11/2026) — AMADEUS em 30/09/2026: pares que se anulam fora do DC e C322637 confirmada como bullet
+
+Decisões da área depois da rodada 27:
+1. Mantém a regra de carrego do estoque (sacado com título vencido marca todos
+   os títulos dele: R$ 16,37 mi do SORANO por R$ 1.293,22 vencidos da C
+   BLINDADOS).
+2. Pares de DC que se anulam (mesmo ativo e emissor, valores opostos) saem do DC
+   para o produto `DC COMPENSADO`, sem prazo: continuam no PL, não entram em
+   faixa nem no fluxo. No AMADEUS são os três pares MEZAN/SRP SINGCTVM (saldo
+   R$ -0,01). Regra geral, aplicada no tratamento de todo fundo, e com log.
+3. C322637 (NCPX C BLINDADOS, R$ 3,75 mi) fica como bullet em 11/04/2027:
+   confirmada no registro de bullets.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Traga para a main o último commit da branch claude/dreamy-babbage-wdtak0 e
+rode os passos abaixo. Nenhum passo grava no banco; nenhum passo altera
+código; o único commit permitido é o merge do passo 3. Rode no cmd, caminho
+absoluto na redireção, um passo de cada vez, sem encadear com &&. Qualquer
+falha, PARE e devolva a saída inteira (exceção: o passo 9 pode terminar com
+código 1, por causa das 2 pendências esperadas; siga).
+
+1. git status --short            (precisa sair vazio; senão PARE)
+2. git fetch origin && git checkout main && git pull
+3. git merge --no-ff origin/claude/dreamy-babbage-wdtak0   (conflito = PARE)
+4. git log --oneline -4 | findstr /I /C:"compensa"   (precisa mostrar 1 linha)
+5. .venv\Scripts\python -m pytest -q          (esperado: 115 passed)
+6. git push origin main
+7. .venv\Scripts\python -m liquidez bullet confirmar --op C322637 --nota "AMADEUS 30/09/2026: Pago Parcial no Beyond, sem parcela a vencer; mantida bullet em 11/04/2027 por decisao da area (05/11/2026)" > C:\Users\mateus.castagnet\mapa_banco\liq28_bullet.txt 2>&1
+8. .venv\Scripts\python -m liquidez tratar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --salvar > C:\Users\mateus.castagnet\mapa_banco\liq28_tratar.txt 2>&1
+   (o log tem de dizer "3 par(es) que se anulam saem do DC para 'DC COMPENSADO'")
+9. .venv\Scripts\python -m liquidez cronograma validar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --detalhar > C:\Users\mateus.castagnet\mapa_banco\liq28_validar.txt 2>&1
+   (esperado: 5 operações de DC e 2 pendências, C322637 e C451447)
+10. .venv\Scripts\python -m liquidez fluxo --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --data 2026-09-30 --acrual --fatos --detalhar > C:\Users\mateus.castagnet\mapa_banco\liq28_fluxo.txt 2>&1
+11. .venv\Scripts\python -m liquidez fatos gerar --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --verboso > C:\Users\mateus.castagnet\mapa_banco\liq28_fatos.txt 2>&1
+12. .venv\Scripts\python -m liquidez escada --fundo "AMADEUS FIDC" --data 2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\liq28_escada.txt 2>&1
+13. git status --short           (precisa continuar vazio)
+
+Me devolva a saída literal dos passos 1, 4, 5, 6 e 13 e, SEM resumir:
+- liq28_bullet, liq28_validar, liq28_fluxo, liq28_fatos e liq28_escada inteiros;
+- do liq28_tratar, as linhas de log do início e da linha "Fundo ....." até a
+  linha "ANBIMA enquadrado ate" (inclusive). NÃO cole a "Tabela vencidos".
+NÃO rode painel nem relatorio, e NÃO envie arquivos de dados\, bi\ ou config\.
+```
