@@ -1240,7 +1240,8 @@ Rode no cmd, um passo de cada vez, sem encadear com &&. Qualquer falha, PARE e
 devolva a saída inteira (exceção: o passo 3 pode terminar com código 2, que só
 quer dizer "sobrou operação na fila"; siga).
 
-1. git status --short && git checkout main && git pull   (status precisa sair vazio; senão PARE)
+1. git status --short           (precisa sair vazio; senão PARE)
+   depois: git checkout main   e em seguida: git pull
 2. .venv\Scripts\python -m liquidez extrair --data 2026-09-30 --fundo "AMADEUS FIDC" --salvar --saida dados\amadeus_2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_extrair.txt 2>&1
 3. .venv\Scripts\python -m liquidez cronograma beyond --fundo "AMADEUS FIDC" --data 2026-09-30 --leitura fundo --saida dados\amadeus_2026-09-30 --detalhar > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_beyond.txt 2>&1
 4. .venv\Scripts\python -m liquidez fluxo --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --data 2026-09-30 --acrual --fatos > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_fluxo.txt 2>&1
