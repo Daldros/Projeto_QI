@@ -1089,6 +1089,24 @@ def cmd_cronograma_beyond_diagnostico(args) -> int:
     return 0
 
 
+def cmd_escada_html(args) -> int:
+    """Escada com horizonte e faixas escolhidos, em HTML (so agregados)."""
+    from . import escada_html as eh
+
+    cadastro = Cadastro(Path(args.diretorio)).carregar()
+    fundo = cadastro.obter(args.fundo)
+    if fundo is None:
+        print(f"Fundo nao encontrado no cadastro: {args.fundo}")
+        return 1
+    cortes = tuple(int(x) for x in args.faixas.split(",") if x.strip())
+    caminho, escada = eh.gerar(cadastro, fundo, Path(args.saida), args.data, args.horizonte,
+                               args.limite, cortes, Path(args.destino_bi),
+                               Path(args.html) if args.html else None)
+    print(eh.resumo_texto(escada))
+    print(f"\nHTML: {caminho.resolve()}")
+    return 0
+
+
 def cmd_escada(args) -> int:
     """Escada de liquidez de UM fundo numa data, em texto, lida da camada de fatos.
 
@@ -2400,8 +2418,12 @@ def _fluxo_do_fundo(fundo, data_posicao, carteira_tratada, prazo_cot):
     return fluxo, resto
 
 
-def _processar_fundo(cadastro, fundo, saida, data_posicao=None):
-    """Roda o pipeline completo de um fundo e devolve tudo o que o relatorio usa."""
+def _processar_fundo(cadastro, fundo, saida, data_posicao=None, prazo_cot=None):
+    """Roda o pipeline completo de um fundo e devolve tudo o que o relatorio usa.
+
+    `prazo_cot` troca o cc do cadastro por outro horizonte (simulacao: "e se o
+    resgate fosse em D+21?"). Sem ele, vale o cc do fundo.
+    """
     from .analise import analisar_carteira, exposicao_estoque, montar_relatorio, outros_fundos
     from .cotas import MapaCotas, ResolvedorCotas
     from .extrator import carregar_base
@@ -2418,7 +2440,7 @@ def _processar_fundo(cadastro, fundo, saida, data_posicao=None):
 
     tp = TabelaPrazos.carregar()
     res = tratar_fundo(fundo, carteira, bd, tp)
-    prazo_cot = fundo.cc
+    prazo_cot = fundo.cc if prazo_cot is None else int(prazo_cot)
     if prazo_cot is None:
         raise ValueError(f"{fundo.nome_interno}: sem cc (prazo de cotizacao) no cadastro.")
 
@@ -3036,6 +3058,19 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--data", required=True, help="data AAAA-MM-DD da particao")
     p.add_argument("--destino", default="bi", help="raiz da camada de fatos (padrao: bi)")
     p.set_defaults(func=cmd_escada)
+
+    p = sub.add_parser("escada-html",
+                       help="escada de um fundo numa data com horizonte H e faixas escolhidas, em HTML")
+    p.add_argument("--fundo", required=True, help="CNPJ ou nome interno")
+    p.add_argument("--data", required=True, help="data de posicao AAAA-MM-DD")
+    p.add_argument("--saida", default=str(SAIDA_PADRAO), help="pasta da carga extraida")
+    p.add_argument("--horizonte", type=int, required=True, help="H: prazo de resgate em dias (ex.: 21)")
+    p.add_argument("--limite", type=int, default=90, help="ate quantos dias a escada abre (padrao 90)")
+    p.add_argument("--faixas", default="7,15,30,60,90",
+                   help="fim de cada faixa, em dias (padrao 7,15,30,60,90)")
+    p.add_argument("--destino-bi", dest="destino_bi", default="bi", help="camada de fatos (fluxo)")
+    p.add_argument("--html", help="caminho do HTML (padrao: relatorios/escada_<cnpj>_<data>_H<h>_<limite>d.html)")
+    p.set_defaults(func=cmd_escada_html)
 
     # --- fatos (camada de BI) ---
     p_fatos = sub.add_parser("fatos", help="camada de fatos para BI, particionada por data")
