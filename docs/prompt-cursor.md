@@ -1221,3 +1221,36 @@ liq30_escada_html.txt INTEIRO e ANEXE o arquivo
 relatorios\escada_49815454000100_2026-09-30_H21_360d.html (só agregados; pode
 ser enviado). NÃO rode painel nem relatorio, e NÃO envie dados\, bi\ ou config\.
 ```
+
+## Rotina (05/11/2026) — escada de liquidez em HTML de um fundo numa data
+
+Prompt de uso recorrente, sem merge: o código já está na main desde a rodada 30.
+Para outro fundo ou outra data, troque o nome do fundo, a data (nos passos 2 a
+6) e o CNPJ só com números no nome do arquivo (passos 6 e 7). Extração, captura
+do Beyond e fluxo refazem a base da data; se ela já existe, os passos só
+regravam o mesmo resultado.
+
+```text
+Repositório Projeto_QI, na máquina do Mateus
+(C:\Users\mateus.castagnet\OneDrive - PERPETUO CONSULTORIA ESPECIALIZADA LTDA\Documentos\Projetos GIT\Projeto_QI).
+
+Gere a escada de liquidez em HTML do AMADEUS FIDC em 30/09/2026 com os passos
+abaixo. Nenhum passo grava no banco; NÃO altere código e NÃO faça commit.
+Rode no cmd, um passo de cada vez, sem encadear com &&. Qualquer falha, PARE e
+devolva a saída inteira (exceção: o passo 3 pode terminar com código 2, que só
+quer dizer "sobrou operação na fila"; siga).
+
+1. git status --short && git checkout main && git pull   (status precisa sair vazio; senão PARE)
+2. .venv\Scripts\python -m liquidez extrair --data 2026-09-30 --fundo "AMADEUS FIDC" --salvar --saida dados\amadeus_2026-09-30 > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_extrair.txt 2>&1
+3. .venv\Scripts\python -m liquidez cronograma beyond --fundo "AMADEUS FIDC" --data 2026-09-30 --leitura fundo --saida dados\amadeus_2026-09-30 --detalhar > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_beyond.txt 2>&1
+4. .venv\Scripts\python -m liquidez fluxo --fundo "AMADEUS FIDC" --saida dados\amadeus_2026-09-30 --data 2026-09-30 --acrual --fatos > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus_fluxo.txt 2>&1
+5. .venv\Scripts\python -m liquidez escada-html --fundo "AMADEUS FIDC" --data 2026-09-30 --saida dados\amadeus_2026-09-30 --horizonte 21 > C:\Users\mateus.castagnet\mapa_banco\escada_amadeus.txt 2>&1
+6. copy /Y relatorios\escada_49815454000100_2026-09-30_H21_360d.html C:\Users\mateus.castagnet\mapa_banco\
+7. start "" "C:\Users\mateus.castagnet\mapa_banco\escada_49815454000100_2026-09-30_H21_360d.html"
+8. git status --short           (precisa continuar vazio)
+
+Me devolva a saída literal dos passos 1, 6 e 8, o escada_amadeus.txt INTEIRO e
+ANEXE o arquivo C:\Users\mateus.castagnet\mapa_banco\escada_49815454000100_2026-09-30_H21_360d.html
+como arquivo (não cole o conteúdo no chat). A página e o texto só têm
+agregados. NÃO envie dados\, bi\ ou config\.
+```
