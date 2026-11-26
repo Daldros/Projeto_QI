@@ -1,6 +1,7 @@
 """Estoque por fundo numa data: Valor Presente, PDD e taxa media dos recebiveis.
 
     python analise_estoque_taxa.py --data 2026-10-30 [--saida saidas\\estoque_taxa_2026-10-30.xlsx]
+                                   [--exportar] [--fundos CNPJ,CNPJ]
 
 Pedido da area em 26/11/2026. Le `datalake.dbo.MUL_GLD_ESTOQUE` na data e, por
 fundo (CNPJ):
@@ -73,6 +74,136 @@ FROM r
 WHERE rn = 1
 GROUP BY doc
 """
+
+
+# Contagem de linhas (26/11/2026): as linhas da tabela na data e os recebiveis
+# depois de tirar as repetidas -- a diferenca sao as correcoes do mesmo recebivel.
+SQL_CONTAR = f"""
+WITH b AS (
+    SELECT REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(e.noDocFundo)), '.', ''), '/', ''), '-', '') AS doc,
+           e.dsNomeFundo, e.dsSeuNumero, e.dsNuDocumento, e.dhAlteracao, e.id
+    FROM {ESTOQUE} AS e WITH (NOLOCK)
+    WHERE e.dtReferencia = ?
+), r AS (
+    SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b.doc, b.dsSeuNumero, b.dsNuDocumento
+                                   ORDER BY b.dhAlteracao DESC, b.id DESC) AS rn
+    FROM b
+)
+SELECT doc AS cnpj, MAX(dsNomeFundo) AS fundo, COUNT(*) AS linhas,
+       SUM(CASE WHEN rn = 1 THEN 1 ELSE 0 END) AS recebiveis
+FROM r GROUP BY doc
+"""
+
+# Exportacao do estoque (26/11/2026): uma linha por recebivel, com os nomes de
+# coluna da tabela. Traz sacado e cedente (nome e documento): e arquivo interno.
+COLUNAS_EXPORTA = (
+    ("Data_Posicao", "dtReferencia"), ("Fundo", "dsNomeFundo"), ("CNPJ_Fundo", "noDocFundo"),
+    ("Seu_Numero", "dsSeuNumero"), ("Documento", "dsNuDocumento"), ("Tipo_Recebivel", "dsTipoRecebivel"),
+    ("Situacao_Recebivel", "dsSituacaoRecebivel"), ("Data_Aquisicao", "dtAquisicao"),
+    ("Vencimento_Original", "dtVencimentoOriginal"), ("Vencimento_Ajustado", "dtVencimentoAjustada"),
+    ("Prazo_DU", "qtPrazo"), ("Prazo_Atual_DU", "qtPrazoAtual"), ("Valor_Aquisicao", "vlAquisicao"),
+    ("Valor_Presente", "vlPresente"), ("Valor_Nominal", "vlNominal"), ("Taxa_Cessao", "txCessao"),
+    ("Taxa_Recebivel", "txRecebivel"), ("Cedente", "dsNomeCedente"), ("CNPJ_Cedente", "noDocCedente"),
+    ("Coobrigacao", "dsCoobrigacao"), ("Sacado", "dsNomeSacado"), ("Documento_Sacado", "noDocSacado"),
+    ("Valor_PDD", "vlPdd"), ("Faixa_PDD", "dsFaixaPdd"), ("Sistema_Origem", "dsSistemaOrigem"),
+)
+
+
+def sql_exportar(n_fundos: int = 0) -> str:
+    filtro = (f" AND REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(e.noDocFundo)), '.', ''), '/', ''), '-', '')"
+              f" IN ({', '.join('?' * n_fundos)})") if n_fundos else ""
+    cols = ", ".join(f"r.{c} AS {nome}" for nome, c in COLUNAS_EXPORTA)
+    return f"""
+WITH r AS (
+    SELECT e.*, ROW_NUMBER() OVER (
+               PARTITION BY REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(e.noDocFundo)), '.', ''), '/', ''), '-', ''),
+                            e.dsSeuNumero, e.dsNuDocumento
+               ORDER BY e.dhAlteracao DESC, e.id DESC) AS rn
+    FROM {ESTOQUE} AS e WITH (NOLOCK)
+    WHERE e.dtReferencia = ?{filtro}
+)
+SELECT {cols} FROM r WHERE r.rn = 1 ORDER BY r.dsNomeFundo, r.dtVencimentoOriginal
+"""
+
+
+LIMITE_XLSX = 1_000_000
+
+
+def exportar(data: str, caminho_base: Path, fundos: list[str] | None = None, lote: int = 100_000) -> tuple[Path, int]:
+    """Grava o estoque da data em CSV (sempre) e, se couber, tambem em XLSX. Devolve (arquivo, linhas).
+
+    Le em lotes direto do banco para nao carregar milhoes de linhas na memoria.
+    """
+    import warnings
+
+    from liquidez import db
+
+    digitos = ["".join(ch for ch in f if ch.isdigit()) for f in (fundos or [])]
+    caminho_base.parent.mkdir(parents=True, exist_ok=True)
+    csv = caminho_base.with_suffix(".csv")
+    linhas = 0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        partes = pd.read_sql(sql_exportar(len(digitos)), db.conectar(), params=(data, *digitos), chunksize=lote)
+        for i, parte in enumerate(partes):
+            parte.to_csv(csv, sep=";", decimal=",", index=False, mode="w" if i == 0 else "a",
+                         header=(i == 0), encoding="utf-8-sig" if i == 0 else "utf-8", date_format="%d/%m/%Y")
+            linhas += len(parte)
+    if linhas == 0 or linhas > LIMITE_XLSX:
+        return csv, linhas
+    xlsx = caminho_base.with_suffix(".xlsx")
+    _csv_para_xlsx(csv, xlsx)
+    return xlsx, linhas
+
+
+def _csv_para_xlsx(csv: Path, xlsx: Path, lote: int = 100_000) -> None:
+    """O CSV em XLSX, linha a linha (write_only), com cabecalho navy e filtro."""
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("Estoque")
+    ws.freeze_panes = "A2"
+    primeiro = True
+    for parte in pd.read_csv(csv, sep=";", decimal=",", chunksize=lote, encoding="utf-8-sig", dtype=str,
+                             keep_default_na=False):
+        if primeiro:
+            cab = []
+            for nome in parte.columns:
+                c = WriteOnlyCell(ws, value=nome)
+                c.font = Font(bold=True, color="FFFFFF")
+                c.fill = PatternFill("solid", fgColor=NAVY)
+                cab.append(c)
+            ws.append(cab)
+            primeiro = False
+        numericas = [c for c in parte.columns if c.startswith(("Valor_", "Taxa_", "Prazo_"))]
+        for _, r in parte.iterrows():
+            linha = []
+            for col, v in r.items():
+                if col in numericas and v != "":
+                    try:
+                        v = float(v.replace(".", "").replace(",", ".")) if "," in v else float(v)
+                    except ValueError:
+                        pass
+                linha.append(v if v != "" else None)
+            ws.append(linha)
+    wb.save(xlsx)
+
+
+def _milhar(v) -> str:
+    return f"{int(v):,}".replace(",", ".")
+
+
+def contar(data: str) -> pd.DataFrame:
+    from liquidez import db
+
+    df = db.consultar(SQL_CONTAR, (data,))
+    if df.empty:
+        return df
+    df["cnpj"] = df["cnpj"].map(_cnpj)
+    df["fundo"] = df["fundo"].fillna("").astype(str).str.strip()
+    return df.sort_values("recebiveis", ascending=False).reset_index(drop=True)
 
 
 def _cnpj(doc: str) -> str:
@@ -213,9 +344,20 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--data", required=True, help="AAAA-MM-DD (ex.: 2026-10-30)")
     ap.add_argument("--saida", help="xlsx de saida (padrao: saidas/estoque_taxa_<data>.xlsx)")
+    ap.add_argument("--exportar", action="store_true",
+                    help="grava tambem o estoque inteiro da data (uma linha por recebivel), em saidas/")
+    ap.add_argument("--fundos", help="com --exportar: so estes CNPJs, separados por virgula")
+    ap.add_argument("--sem-analise", dest="sem_analise", action="store_true",
+                    help="so a contagem (e a exportacao, se pedida), sem a planilha por fundo")
     a = ap.parse_args(argv)
 
     from liquidez import db
+
+    # Milhoes de linhas: as consultas desta analise passam do limite padrao de 2 min.
+    try:
+        db.conectar().timeout = 1800
+    except Exception:  # noqa: BLE001 - sem banco (testes), segue
+        pass
 
     d = db.consultar(SQL_DATA, (a.data,))
     usada = d.iloc[0, 0] if len(d) else None
@@ -225,6 +367,23 @@ def main(argv=None) -> int:
     usada = str(pd.Timestamp(usada).date())
     if usada != a.data:
         print(f"AVISO: sem posicao em {a.data}; usada {usada}, a ultima ate ela.")
+
+    cont = contar(usada)
+    if len(cont):
+        print(f"Linhas do estoque em {usada}: {_milhar(cont['linhas'].sum())} na tabela, "
+              f"{_milhar(cont['recebiveis'].sum())} recebiveis (sem as repetidas), {len(cont)} fundos")
+        print(f"   {'FUNDO':<44} {'CNPJ':<20} {'LINHAS':>12} {'RECEBIVEIS':>12}")
+        for _, r in cont.iterrows():
+            print(f"   {r['fundo'][:44]:<44} {r['cnpj']:<20} {_milhar(r['linhas']):>12} {_milhar(r['recebiveis']):>12}")
+    if a.exportar:
+        fundos = [f.strip() for f in (a.fundos or "").split(",") if f.strip()]
+        base = AQUI / "saidas" / f"estoque_{usada}"
+        arquivo, n = exportar(usada, base, fundos)
+        print(f"Estoque exportado: {_milhar(n)} linhas em {arquivo.resolve()}")
+        if n > LIMITE_XLSX:
+            print(f"(mais de {_milhar(LIMITE_XLSX)} linhas: so CSV, porque o Excel abre ate 1.048.576 linhas)")
+    if a.sem_analise:
+        return 0
     df = montar(db.consultar(SQL_FUNDOS, (usada,)))
     saida = Path(a.saida) if a.saida else AQUI / "saidas" / f"estoque_taxa_{usada}.xlsx"
     escrever(df, a.data, usada, saida)

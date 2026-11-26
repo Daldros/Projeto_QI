@@ -54,6 +54,9 @@ def test_main_com_banco_falso_grava_a_planilha(tmp_path, monkeypatch, capsys):
             assert params == ("2026-10-30",)
             return pd.DataFrame({"d": [pd.Timestamp("2026-10-29")]})
         assert params == ("2026-10-29",)
+        if "COUNT(*) AS linhas" in sql:
+            return pd.DataFrame({"cnpj": ["49815454000100"], "fundo": ["AMADEUS FIDC"],
+                                 "linhas": [1201], "recebiveis": [1200]})
         return BRUTO
 
     monkeypatch.setattr(db, "consultar", falso)
@@ -61,8 +64,37 @@ def test_main_com_banco_falso_grava_a_planilha(tmp_path, monkeypatch, capsys):
     assert ae.main(["--data", "2026-10-30", "--saida", str(saida)]) == 0
     out = capsys.readouterr().out
     assert "AVISO: sem posicao em 2026-10-30; usada 2026-10-29" in out and "TOTAL" in out
+    assert "Linhas do estoque em 2026-10-29: 1.201 na tabela, 1.200 recebiveis" in out
     wb = load_workbook(saida)
     ws = wb["Estoque por fundo"]
     assert [c.value for c in ws[4]] == ["Fundo", "CNPJ", "Valor Presente (R$)", "VL PDD (R$)", "Taxa média"]
     assert ws["A5"].value == "MULTIPLICA FIDC" and ws["A7"].value == "Total" and ws["C7"].value == 2100
     assert "Conferência" in wb.sheetnames
+
+
+def test_exportar_em_lotes_csv_e_xlsx(tmp_path, monkeypatch):
+    from openpyxl import load_workbook
+
+    from liquidez import db
+
+    nomes = [n for n, _ in ae.COLUNAS_EXPORTA]
+    lote = pd.DataFrame([["2026-10-30", "AMADEUS FIDC", "49.815.454/0001-00", "S1", "D1", "DUP", "A vencer",
+                          "2026-09-01", "2026-12-01", "2026-12-01", 40, 22, 900.5, 950.25, 1000.0, 2.1, 2.2,
+                          "CED", "1", "N", "SAC", "2", -10.0, "AA", "X"]] * 3, columns=nomes)
+    pedidos = []
+
+    def leitura(sql, con, params=(), chunksize=None):
+        pedidos.append((sql, params))
+        yield lote.iloc[:2]
+        yield lote.iloc[2:]
+
+    monkeypatch.setattr(db, "conectar", lambda *a, **k: object())
+    monkeypatch.setattr(ae.pd, "read_sql", leitura)
+    arquivo, n = ae.exportar("2026-10-30", tmp_path / "estoque_2026-10-30", ["49.815.454/0001-00"])
+    assert n == 3 and arquivo.suffix == ".xlsx" and (tmp_path / "estoque_2026-10-30.csv").exists()
+    sql, params = pedidos[0]
+    assert params == ("2026-10-30", "49815454000100") and "WHERE r.rn = 1" in sql and "IN (?)" in sql
+    ws = load_workbook(arquivo)["Estoque"]
+    linhas = list(ws.values)
+    assert list(linhas[0]) == nomes and len(linhas) == 4
+    assert linhas[1][nomes.index("Valor_Presente")] == pytest.approx(950.25)
